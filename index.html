@@ -122,6 +122,9 @@
             background-color: white;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             padding: 0.8rem 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 1030;
         }
         
         .navbar-brand {
@@ -141,8 +144,10 @@
             top: 56px;
             left: 0;
             padding-top: 20px;
-            transition: all 0.3s;
-            z-index: 1000;
+            transition: transform 0.3s ease;
+            z-index: 1020;
+            overflow-y: auto;
+            height: calc(100vh - 56px);
         }
         
         .sidebar-menu {
@@ -398,6 +403,7 @@
             
             .sidebar.expanded {
                 transform: translateX(0);
+                box-shadow: 5px 0 15px rgba(0, 0, 0, 0.1);
             }
             
             .main-content {
@@ -407,12 +413,12 @@
             .mobile-nav-backdrop {
                 display: none;
                 position: fixed;
-                top: 0;
+                top: 56px;
                 left: 0;
                 right: 0;
                 bottom: 0;
                 background-color: rgba(0, 0, 0, 0.5);
-                z-index: 999;
+                z-index: 1010;
             }
             
             .mobile-nav-backdrop.expanded {
@@ -1160,6 +1166,20 @@
                     mobileNavBackdrop.classList.remove('expanded');
                 });
             }
+            
+            // Auto hide sidebar on scroll
+            let scrollTimer;
+            window.addEventListener('scroll', function() {
+                if (window.innerWidth < 992) {
+                    if (sidebar.classList.contains('expanded')) {
+                        clearTimeout(scrollTimer);
+                        scrollTimer = setTimeout(function() {
+                            sidebar.classList.remove('expanded');
+                            mobileNavBackdrop.classList.remove('expanded');
+                        }, 250);
+                    }
+                }
+            });
             
             // Function to show the app
             function showApp(username) {
@@ -2269,7 +2289,7 @@
                         });
                         
                         masterEanFileInput.addEventListener('change', function(e) {
-                            const file = e.target.files[0];
+                            const file = e.target.faves[0];
                             if (!file) return;
                             
                             const reader = new FileReader();
