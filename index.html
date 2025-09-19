@@ -182,6 +182,41 @@
             margin-right: 10px;
         }
         
+        .sidebar-submenu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            padding-left: 40px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .sidebar-submenu.expanded {
+            max-height: 300px;
+        }
+        
+        .sidebar-submenu li {
+            margin-bottom: 2px;
+        }
+        
+        .sidebar-submenu a {
+            padding: 8px 15px;
+            font-size: 0.9rem;
+        }
+        
+        .has-submenu > a::after {
+            content: "\f107";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            margin-left: auto;
+            transition: transform 0.3s;
+        }
+        
+        .has-submenu.expanded > a::after {
+            transform: rotate(180deg);
+        }
+        
         .main-content {
             margin-left: 250px;
             padding: 30px;
@@ -600,11 +635,25 @@
                         <span class="menu-text">Data Count</span>
                     </a>
                 </li>
-                <li>
+                <li class="has-submenu" id="master-data-menu">
                     <a href="#master-data" data-tab="master-data">
                         <i class="fas fa-database"></i>
                         <span class="menu-text">Master Data</span>
                     </a>
+                    <ul class="sidebar-submenu">
+                        <li>
+                            <a href="#master-location" data-tab="master-location">
+                                <i class="fas fa-map-marker-alt"></i>
+                                <span class="menu-text">Master Lokasi</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#master-ean" data-tab="master-ean">
+                                <i class="fas fa-barcode"></i>
+                                <span class="menu-text">Master EAN</span>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
                 <li>
                     <a href="#inventory-balance" data-tab="inventory-balance">
@@ -804,139 +853,130 @@
                 </div>
             </div>
             
-            <!-- Master Data Tab -->
-            <div class="tab-content" id="master-data-tab" style="display: none;">
+            <!-- Master Lokasi Tab -->
+            <div class="tab-content" id="master-location-tab" style="display: none;">
                 <div class="section-card">
                     <h2 class="section-title">
-                        <i class="fas fa-database"></i> Master Data Management
+                        <i class="fas fa-map-marker-alt"></i> Master Data Lokasi
                     </h2>
                     
-                    <!-- Master Data Tabs -->
-                    <ul class="nav nav-tabs master-data-tabs" id="masterDataTabs" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="master-location-tab" data-bs-toggle="tab" data-bs-target="#master-location" type="button" role="tab">Master Lokasi</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="master-ean-tab" data-bs-toggle="tab" data-bs-target="#master-ean" type="button" role="tab">Master EAN</button>
-                        </li>
-                    </ul>
+                    <!-- GitHub Sync Buttons for Master Data Lokasi -->
+                    <div class="sync-buttons">
+                        <button type="button" class="btn btn-primary" id="sync-master-location">
+                            <i class="fas fa-sync-alt"></i> Sync Data Master Lokasi
+                        </button>
+                    </div>
+                    <div class="progress" id="sync-master-location-progress" style="display: none;">
+                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div class="sync-info">
+                        <i class="fas fa-info-circle"></i> Terakhir sinkronisasi: <span id="last-sync-master-location">Belum pernah</span>
+                    </div>
                     
-                    <div class="tab-content" id="masterDataTabsContent">
-                        <!-- Master Lokasi Tab -->
-                        <div class="tab-pane fade show active" id="master-location" role="tabpanel">
-                            <!-- GitHub Sync Buttons for Master Data Lokasi -->
-                            <div class="sync-buttons">
-                                <button type="button" class="btn btn-primary" id="sync-master-location">
-                                    <i class="fas fa-sync-alt"></i> Sync Data Master Lokasi
-                                </button>
-                            </div>
-                            <div class="progress" id="sync-master-location-progress" style="display: none;">
-                                <div class="progress-bar" role="progressbar" style="width: 0%"></div>
-                            </div>
-                            <div class="sync-info">
-                                <i class="fas fa-info-circle"></i> Terakhir sinkronisasi: <span id="last-sync-master-location">Belum pernah</span>
-                            </div>
-                            
-                            <div class="d-flex flex-wrap gap-2 mb-4">
-                                <button id="upload-master-location-btn" class="btn btn-success">
-                                    <i class="fas fa-upload"></i> Upload Excel
-                                </button>
-                                <button id="download-master-location-btn" class="btn btn-primary">
-                                    <i class="fas fa-download"></i> Download Excel
-                                </button>
-                                <button id="clear-master-location-btn" class="btn btn-danger">
-                                    <i class="fas fa-trash"></i> Hapus Semua
-                                </button>
-                                <button id="add-master-location-btn" class="btn btn-primary">
-                                    <i class="fas fa-plus"></i> Tambah Data
-                                </button>
-                            </div>
+                    <div class="d-flex flex-wrap gap-2 mb-4">
+                        <button id="upload-master-location-btn" class="btn btn-success">
+                            <i class="fas fa-upload"></i> Upload Excel
+                        </button>
+                        <button id="download-master-location-btn" class="btn btn-primary">
+                            <i class="fas fa-download"></i> Download Excel
+                        </button>
+                        <button id="clear-master-location-btn" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Hapus Semua
+                        </button>
+                        <button id="add-master-location-btn" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Tambah Data
+                        </button>
+                    </div>
 
-                            <!-- Excel Format Info -->
-                            <div class="excel-format">
-                                <h5><i class="fas fa-info-circle"></i> Format File Excel</h5>
-                                <p>File Excel harus memiliki kolom dengan header berikut:</p>
-                                <ul>
-                                    <li><strong>Validation Code</strong> (wajib)</li>
-                                    <li><strong>Location</strong> (wajib)</li>
-                                </ul>
-                            </div>
-                            
-                            <input type="file" id="master-location-file-input" accept=".xlsx, .xls" style="display: none;">
-                            
-                            <div class="table-responsive">
-                                <table class="table table-hover" id="master-location-table">
-                                    <thead>
-                                        <tr>
-                                            <th scope="col">Validation Code</th>
-                                            <th scope="col">Location</th>
-                                            <th scope="col" style="width: 100px;">Aksi</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <!-- Data akan diisi oleh JavaScript -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        
-                        <!-- Master EAN Tab -->
-                        <div class="tab-pane fade" id="master-ean" role="tabpanel">
-                            <!-- GitHub Sync Buttons for Master Data EAN -->
-                            <div class="sync-buttons">
-                                <button type="button" class="btn btn-primary" id="sync-master-ean">
-                                    <i class="fas fa-sync-alt"></i> Sync Data Master EAN
-                                </button>
-                            </div>
-                            <div class="progress" id="sync-master-ean-progress" style="display: none;">
-                                <div class="progress-bar" role="progressbar" style="width: 0%"></div>
-                            </div>
-                            <div class="sync-info">
-                                <i class="fas fa-info-circle"></i> Terakhir sinkronisasi: <span id="last-sync-master-ean">Belum pernah</span>
-                            </div>
-                            
-                            <div class="d-flex flex-wrap gap-2 mb-4">
-                                <button id="upload-master-ean-btn" class="btn btn-success">
-                                    <i class="fas fa-upload"></i> Upload Excel
-                                </button>
-                                <button id="download-master-ean-btn" class="btn btn-primary">
-                                    <i class="fas fa-download"></i> Download Excel
-                                </button>
-                                <button id="clear-master-ean-btn" class="btn btn-danger">
-                                    <i class="fas fa-trash"></i> Hapus Semua
-                                </button>
-                                <button id="add-master-ean-btn" class="btn btn-primary">
-                                    <i class="fas fa-plus"></i> Tambah Data
-                                </button>
-                            </div>
+                    <!-- Excel Format Info -->
+                    <div class="excel-format">
+                        <h5><i class="fas fa-info-circle"></i> Format File Excel</h5>
+                        <p>File Excel harus memiliki kolom dengan header berikut:</p>
+                        <ul>
+                            <li><strong>Validation Code</strong> (wajib)</li>
+                            <li><strong>Location</strong> (wajib)</li>
+                        </ul>
+                    </div>
+                    
+                    <input type="file" id="master-location-file-input" accept=".xlsx, .xls" style="display: none;">
+                    
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="master-location-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Validation Code</th>
+                                    <th scope="col">Location</th>
+                                    <th scope="col" style="width: 100px;">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Data akan diisi oleh JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Master EAN Tab -->
+            <div class="tab-content" id="master-ean-tab" style="display: none;">
+                <div class="section-card">
+                    <h2 class="section-title">
+                        <i class="fas fa-barcode"></i> Master Data EAN
+                    </h2>
+                    
+                    <!-- GitHub Sync Buttons for Master Data EAN -->
+                    <div class="sync-buttons">
+                        <button type="button" class="btn btn-primary" id="sync-master-ean">
+                            <i class="fas fa-sync-alt"></i> Sync Data Master EAN
+                        </button>
+                    </div>
+                    <div class="progress" id="sync-master-ean-progress" style="display: none;">
+                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div class="sync-info">
+                        <i class="fas fa-info-circle"></i> Terakhir sinkronisasi: <span id="last-sync-master-ean">Belum pernah</span>
+                    </div>
+                    
+                    <div class="d-flex flex-wrap gap-2 mb-4">
+                        <button id="upload-master-ean-btn" class="btn btn-success">
+                            <i class="fas fa-upload"></i> Upload Excel
+                        </button>
+                        <button id="download-master-ean-btn" class="btn btn-primary">
+                            <i class="fas fa-download"></i> Download Excel
+                        </button>
+                        <button id="clear-master-ean-btn" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Hapus Semua
+                        </button>
+                        <button id="add-master-ean-btn" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Tambah Data
+                        </button>
+                    </div>
 
-                            <!-- Excel Format Info -->
-                            <div class="excel-format">
-                                <h5><i class="fas fa-info-circle"></i> Format File Excel</h5>
-                                <p>File Excel harus memiliki kolom dengan header berikut:</p>
-                                <ul>
-                                    <li><strong>EAN</strong> (wajib)</li>
-                                    <li><strong>SKU</strong> (wajib)</li>
-                                </ul>
-                            </div>
-                            
-                            <input type="file" id="master-ean-file-input" accept=".xlsx, .xls" style="display: none;">
-                            
-                            <div class="table-responsive">
-                                <table class="table table-hover" id="master-ean-table">
-                                    <thead>
-                                        <tr>
-                                            <th scope="col">EAN</th>
-                                            <th scope="col">SKU</th>
-                                            <th scope="col" style="width: 100px;">Aksi</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <!-- Data akan diisi oleh JavaScript -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                    <!-- Excel Format Info -->
+                    <div class="excel-format">
+                        <h5><i class="fas fa-info-circle"></i> Format File Excel</h5>
+                        <p>File Excel harus memiliki kolom dengan header berikut:</p>
+                        <ul>
+                            <li><strong>EAN</strong> (wajib)</li>
+                            <li><strong>SKU</strong> (wajib)</li>
+                        </ul>
+                    </div>
+                    
+                    <input type="file" id="master-ean-file-input" accept=".xlsx, .xls" style="display: none;">
+                    
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="master-ean-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">EAN</th>
+                                    <th scope="col">SKU</th>
+                                    <th scope="col" style="width: 100px;">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Data akan diisi oleh JavaScript -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -1096,6 +1136,266 @@
         let inventoryData = [];
         let autoSyncInterval = null;
         
+        // Fungsi untuk menampilkan notifikasi toast
+        function showToast(message, type = 'success') {
+            const toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) return;
+            
+            const toast = document.createElement('div');
+            toast.className = `toast ${type === 'error' ? 'error' : type === 'info' ? 'info' : ''}`;
+            toast.innerHTML = `
+                <div><i class="fas ${type === 'error' ? 'fa-exclamation-circle' : type === 'info' ? 'fa-info-circle' : 'fa-check-circle'} me-2"></i> ${message}</div>
+                <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+            `;
+            
+            toastContainer.appendChild(toast);
+            
+            // Remove toast after 3 seconds
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.remove();
+                }
+            }, 3000);
+        }
+        
+        // Fungsi untuk render data count table
+        function renderDataCountTable() {
+            const dataCountTable = document.getElementById('data-count-table') ? document.getElementById('data-count-table').querySelector('tbody') : null;
+            const startDateFilter = document.getElementById('start-date');
+            const endDateFilter = document.getElementById('end-date');
+            
+            if (!dataCountTable) return;
+            
+            const startDate = startDateFilter ? new Date(startDateFilter.value) : new Date();
+            const endDate = endDateFilter ? new Date(endDateFilter.value) : new Date();
+            endDate.setHours(23, 59, 59, 999); // Set to end of day
+            
+            let cycleCountData = JSON.parse(localStorage.getItem(`cycleCountData_${userKey}`)) || [];
+            
+            // Filter data by date range
+            const filteredData = cycleCountData.filter(item => {
+                const itemDate = new Date(item.timestamp);
+                return itemDate >= startDate && itemDate <= endDate;
+            });
+            
+            dataCountTable.innerHTML = '';
+            
+            if (filteredData.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="8" class="text-center py-4 text-muted">Tidak ada data count</td>`;
+                dataCountTable.appendChild(row);
+                return;
+            }
+            
+            filteredData.forEach((item, index) => {
+                const row = document.createElement('tr');
+                const date = new Date(item.timestamp);
+                const formattedDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                
+                row.innerHTML = `
+                    <td>
+                        <input type="checkbox" class="form-check-input data-checkbox" data-index="${index}">
+                    </td>
+                    <td>${formattedDate}</td>
+                    <td>${item.location}</td>
+                    <td>${item.ean}</td>
+                    <td>${item.sku}</td>
+                    <td>${item.countType}</td>
+                    <td>${item.qty}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger delete-data-btn" data-index="${index}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                `;
+                dataCountTable.appendChild(row);
+            });
+            
+            // Add event listeners to checkboxes
+            document.querySelectorAll('.data-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', updateSelectAllCheckbox);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-data-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    deleteDataCountItem(index);
+                });
+            });
+        }
+        
+        // Fungsi untuk render master location data
+        function renderMasterLocationData() {
+            const masterLocationTable = document.getElementById('master-location-table') ? document.getElementById('master-location-table').querySelector('tbody') : null;
+            
+            if (!masterLocationTable) return;
+            
+            masterLocationTable.innerHTML = '';
+            
+            if (masterLocationData.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="3" class="text-center py-4 text-muted">Tidak ada data master lokasi</td>`;
+                masterLocationTable.appendChild(row);
+                return;
+            }
+            
+            masterLocationData.forEach((item, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.validationCode || ''}</td>
+                    <td>${item.location || ''}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger delete-master-location-btn" data-index="${index}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                `;
+                masterLocationTable.appendChild(row);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-master-location-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    deleteMasterLocationItem(index);
+                });
+            });
+        }
+        
+        // Fungsi untuk render master EAN data
+        function renderMasterEanData() {
+            const masterEanTable = document.getElementById('master-ean-table') ? document.getElementById('master-ean-table').querySelector('tbody') : null;
+            
+            if (!masterEanTable) return;
+            
+            masterEanTable.innerHTML = '';
+            
+            if (masterEanData.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="3" class="text-center py-4 text-muted">Tidak ada data master EAN</td>`;
+                masterEanTable.appendChild(row);
+                return;
+            }
+            
+            masterEanData.forEach((item, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.ean || ''}</td>
+                    <td>${item.sku || ''}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger delete-master-ean-btn" data-index="${index}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                `;
+                masterEanTable.appendChild(row);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-master-ean-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    deleteMasterEanItem(index);
+                });
+            });
+        }
+        
+        // Fungsi untuk render inventory data
+        function renderInventoryData() {
+            const inventoryTable = document.getElementById('inventory-table') ? document.getElementById('inventory-table').querySelector('tbody') : null;
+            
+            if (!inventoryTable) return;
+            
+            inventoryTable.innerHTML = '';
+            
+            if (inventoryData.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="6" class="text-center py-4 text-muted">Tidak ada data inventory</td>`;
+                inventoryTable.appendChild(row);
+                return;
+            }
+            
+            inventoryData.forEach((item, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.locationId || ''}</td>
+                    <td>${item.sku || ''}</td>
+                    <td>${item.skuDescrL || ''}</td>
+                    <td>${item.traceId || ''}</td>
+                    <td>${item.qtyOnHand || ''}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger delete-inventory-btn" data-index="${index}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                `;
+                inventoryTable.appendChild(row);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-inventory-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    deleteInventoryItem(index);
+                });
+            });
+        }
+        
+        // Fungsi untuk menghapus data count item
+        function deleteDataCountItem(index) {
+            if (!confirm('Apakah Anda yakin ingin menghapus data ini?')) {
+                return;
+            }
+            
+            let cycleCountData = JSON.parse(localStorage.getItem(`cycleCountData_${userKey}`)) || [];
+            cycleCountData.splice(index, 1);
+            localStorage.setItem(`cycleCountData_${userKey}`, JSON.stringify(cycleCountData));
+            renderDataCountTable();
+            showToast('Data berhasil dihapus');
+        }
+        
+        // Fungsi untuk menghapus master location item
+        function deleteMasterLocationItem(index) {
+            if (confirm('Apakah Anda yakin ingin menghapus data master lokasi ini?')) {
+                masterLocationData.splice(index, 1);
+                localStorage.setItem(`masterLocationData_${userKey}`, JSON.stringify(masterLocationData));
+                renderMasterLocationData();
+                showToast('Data master lokasi berhasil dihapus!');
+            }
+        }
+        
+        // Fungsi untuk menghapus master EAN item
+        function deleteMasterEanItem(index) {
+            if (confirm('Apakah Anda yakin ingin menghapus data master EAN ini?')) {
+                masterEanData.splice(index, 1);
+                localStorage.setItem(`masterEanData_${userKey}`, JSON.stringify(masterEanData));
+                renderMasterEanData();
+                showToast('Data master EAN berhasil dihapus!');
+            }
+        }
+        
+        // Fungsi untuk menghapus inventory item
+        function deleteInventoryItem(index) {
+            if (confirm('Apakah Anda yakin ingin menghapus data inventory ini?')) {
+                inventoryData.splice(index, 1);
+                localStorage.setItem(`inventoryData_${userKey}`, JSON.stringify(inventoryData));
+                renderInventoryData();
+                showToast('Data inventory berhasil dihapus!');
+            }
+        }
+        
+        // Fungsi untuk update select all checkbox
+        function updateSelectAllCheckbox() {
+            const allCheckboxes = document.querySelectorAll('.data-checkbox');
+            const checkedCheckboxes = document.querySelectorAll('.data-checkbox:checked');
+            const selectAllCheckbox = document.getElementById('select-all');
+            
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = allCheckboxes.length > 0 && allCheckboxes.length === checkedCheckboxes.length;
+            }
+        }
+        
         document.addEventListener('DOMContentLoaded', function() {
             // Login functionality
             const loginContainer = document.getElementById('login-container');
@@ -1106,6 +1406,7 @@
             const sidebarToggle = document.getElementById('sidebar-toggle');
             const sidebar = document.getElementById('sidebar');
             const mobileNavBackdrop = document.getElementById('mobile-nav-backdrop');
+            const masterDataMenu = document.getElementById('master-data-menu');
             
             // Check if user is already logged in
             const savedUser = sessionStorage.getItem('currentUser');
@@ -1167,6 +1468,20 @@
                 });
             }
             
+            // Master data menu toggle
+            if (masterDataMenu) {
+                masterDataMenu.addEventListener('click', function(e) {
+                    if (e.target.tagName === 'A' && e.target.getAttribute('data-tab') === 'master-data') {
+                        e.preventDefault();
+                        this.classList.toggle('expanded');
+                        const submenu = this.querySelector('.sidebar-submenu');
+                        if (submenu) {
+                            submenu.classList.toggle('expanded');
+                        }
+                    }
+                });
+            }
+            
             // Auto hide sidebar on scroll
             let scrollTimer;
             window.addEventListener('scroll', function() {
@@ -1208,28 +1523,6 @@
                 if (appContainer) appContainer.style.display = 'none';
             }
             
-            // Function to show toast notification
-            function showToast(message, type = 'success') {
-                const toastContainer = document.getElementById('toast-container');
-                if (!toastContainer) return;
-                
-                const toast = document.createElement('div');
-                toast.className = `toast ${type === 'error' ? 'error' : type === 'info' ? 'info' : ''}`;
-                toast.innerHTML = `
-                    <div><i class="fas ${type === 'error' ? 'fa-exclamation-circle' : type === 'info' ? 'fa-info-circle' : 'fa-check-circle'} me-2"></i> ${message}</div>
-                    <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
-                `;
-                
-                toastContainer.appendChild(toast);
-                
-                // Remove toast after 3 seconds
-                setTimeout(() => {
-                    if (toast.parentElement) {
-                        toast.remove();
-                    }
-                }, 3000);
-            }
-            
             // Sidebar navigation
             const sidebarLinks = document.querySelectorAll('.sidebar-menu a');
             const tabContents = document.querySelectorAll('.tab-content');
@@ -1243,6 +1536,17 @@
                     // Update active tab link
                     sidebarLinks.forEach(l => l.classList.remove('active'));
                     this.classList.add('active');
+                    
+                    // If this is a submenu item, also activate the parent
+                    if (this.closest('.sidebar-submenu')) {
+                        const parentItem = this.closest('.has-submenu');
+                        if (parentItem) {
+                            const parentLink = parentItem.querySelector('a');
+                            if (parentLink) {
+                                parentLink.classList.add('active');
+                            }
+                        }
+                    }
                     
                     // Show active tab content
                     tabContents.forEach(content => content.style.display = 'none');
@@ -1260,8 +1564,9 @@
                     // If data count tab is selected, render the data
                     if (tabId === 'data-count') {
                         renderDataCountTable();
-                    } else if (tabId === 'master-data') {
+                    } else if (tabId === 'master-location') {
                         renderMasterLocationData();
+                    } else if (tabId === 'master-ean') {
                         renderMasterEanData();
                     } else if (tabId === 'inventory-balance') {
                         renderInventoryData();
@@ -1317,14 +1622,12 @@
                     const clearMasterLocationBtn = document.getElementById('clear-master-location-btn');
                     const addMasterLocationBtn = document.getElementById('add-master-location-btn');
                     const masterLocationFileInput = document.getElementById('master-location-file-input');
-                    const masterLocationTable = document.getElementById('master-location-table') ? document.getElementById('master-location-table').querySelector('tbody') : null;
                     
                     const uploadMasterEanBtn = document.getElementById('upload-master-ean-btn');
                     const downloadMasterEanBtn = document.getElementById('download-master-ean-btn');
                     const clearMasterEanBtn = document.getElementById('clear-master-ean-btn');
                     const addMasterEanBtn = document.getElementById('add-master-ean-btn');
                     const masterEanFileInput = document.getElementById('master-ean-file-input');
-                    const masterEanTable = document.getElementById('master-ean-table') ? document.getElementById('master-ean-table').querySelector('tbody') : null;
                     
                     // Inventory data elements
                     const uploadInventoryBtn = document.getElementById('upload-inventory-btn');
@@ -1332,7 +1635,6 @@
                     const clearInventoryBtn = document.getElementById('clear-inventory-btn');
                     const addInventoryBtn = document.getElementById('add-inventory-btn');
                     const inventoryFileInput = document.getElementById('inventory-file-input');
-                    const inventoryTable = document.getElementById('inventory-table') ? document.getElementById('inventory-table').querySelector('tbody') : null;
                     
                     // Data count elements
                     const startDateFilter = document.getElementById('start-date');
@@ -1341,7 +1643,6 @@
                     const exportBtn = document.getElementById('export-btn');
                     const deleteSelectedBtn = document.getElementById('delete-selected-btn');
                     const selectAllCheckbox = document.getElementById('select-all');
-                    const dataCountTable = document.getElementById('data-count-table') ? document.getElementById('data-count-table').querySelector('tbody') : null;
                     
                     // GitHub configuration elements
                     const githubToken = document.getElementById('github-token');
@@ -1627,7 +1928,7 @@
                         
                         // Function to pull data from GitHub
                         function pullData() {
-                            return new Promise((resolve, reject) => {
+                            return new Promise((resolve, reject)=> {
                                 const url = `https://api.github.com/repos/${config.owner}/${config.repo}/contents/${fileName}`;
                                 
                                 fetch(url, {
@@ -2049,50 +2350,6 @@
                     }
                     
                     // Master Location Data Functions
-                    function renderMasterLocationData() {
-                        if (!masterLocationTable) return;
-                        
-                        masterLocationTable.innerHTML = '';
-                        
-                        if (masterLocationData.length === 0) {
-                            const row = document.createElement('tr');
-                            row.innerHTML = `<td colspan="3" class="text-center py-4 text-muted">Tidak ada data master lokasi</td>`;
-                            masterLocationTable.appendChild(row);
-                            return;
-                        }
-                        
-                        masterLocationData.forEach((item, index) => {
-                            const row = document.createElement('tr');
-                            row.innerHTML = `
-                                <td>${item.validationCode || ''}</td>
-                                <td>${item.location || ''}</td>
-                                <td>
-                                    <button class="btn btn-sm btn-danger delete-master-location-btn" data-index="${index}">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </td>
-                            `;
-                            masterLocationTable.appendChild(row);
-                        });
-                        
-                        // Add event listeners to delete buttons
-                        document.querySelectorAll('.delete-master-location-btn').forEach(btn => {
-                            btn.addEventListener('click', function() {
-                                const index = parseInt(this.getAttribute('data-index'));
-                                deleteMasterLocationItem(index);
-                            });
-                        });
-                    }
-                    
-                    function deleteMasterLocationItem(index) {
-                        if (confirm('Apakah Anda yakin ingin menghapus data master lokasi ini?')) {
-                            masterLocationData.splice(index, 1);
-                            localStorage.setItem(`masterLocationData_${userKey}`, JSON.stringify(masterLocationData));
-                            renderMasterLocationData();
-                            showToast('Data master lokasi berhasil dihapus!');
-                        }
-                    }
-                    
                     // Add new master location data
                     if (addMasterLocationBtn) {
                         addMasterLocationBtn.addEventListener('click', function() {
@@ -2211,50 +2468,6 @@
                     }
                     
                     // Master EAN Data Functions
-                    function renderMasterEanData() {
-                        if (!masterEanTable) return;
-                        
-                        masterEanTable.innerHTML = '';
-                        
-                        if (masterEanData.length === 0) {
-                            const row = document.createElement('tr');
-                            row.innerHTML = `<td colspan="3" class="text-center py-4 text-muted">Tidak ada data master EAN</td>`;
-                            masterEanTable.appendChild(row);
-                            return;
-                        }
-                        
-                        masterEanData.forEach((item, index) => {
-                            const row = document.createElement('tr');
-                            row.innerHTML = `
-                                <td>${item.ean || ''}</td>
-                                <td>${item.sku || ''}</td>
-                                <td>
-                                    <button class="btn btn-sm btn-danger delete-master-ean-btn" data-index="${index}">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </td>
-                            `;
-                            masterEanTable.appendChild(row);
-                        });
-                        
-                        // Add event listeners to delete buttons
-                        document.querySelectorAll('.delete-master-ean-btn').forEach(btn => {
-                            btn.addEventListener('click', function() {
-                                const index = parseInt(this.getAttribute('data-index'));
-                                deleteMasterEanItem(index);
-                            });
-                        });
-                    }
-                    
-                    function deleteMasterEanItem(index) {
-                        if (confirm('Apakah Anda yakin ingin menghapus data master EAN ini?')) {
-                            masterEanData.splice(index, 1);
-                            localStorage.setItem(`masterEanData_${userKey}`, JSON.stringify(masterEanData));
-                            renderMasterEanData();
-                            showToast('Data master EAN berhasil dihapus!');
-                        }
-                    }
-                    
                     // Add new master EAN data
                     if (addMasterEanBtn) {
                         addMasterEanBtn.addEventListener('click', function() {
@@ -2289,7 +2502,7 @@
                         });
                         
                         masterEanFileInput.addEventListener('change', function(e) {
-                            const file = e.target.faves[0];
+                            const file = e.target.files[0];
                             if (!file) return;
                             
                             const reader = new FileReader();
@@ -2373,53 +2586,6 @@
                     }
                     
                     // Inventory Data Functions
-                    function renderInventoryData() {
-                        if (!inventoryTable) return;
-                        
-                        inventoryTable.innerHTML = '';
-                        
-                        if (inventoryData.length === 0) {
-                            const row = document.createElement('tr');
-                            row.innerHTML = `<td colspan="6" class="text-center py-4 text-muted">Tidak ada data inventory</td>`;
-                            inventoryTable.appendChild(row);
-                            return;
-                        }
-                        
-                        inventoryData.forEach((item, index) => {
-                            const row = document.createElement('tr');
-                            row.innerHTML = `
-                                <td>${item.locationId || ''}</td>
-                                <td>${item.sku || ''}</td>
-                                <td>${item.skuDescrL || ''}</td>
-                                <td>${item.traceId || ''}</td>
-                                <td>${item.qtyOnHand || ''}</td>
-                                <td>
-                                    <button class="btn btn-sm btn-danger delete-inventory-btn" data-index="${index}">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </td>
-                            `;
-                            inventoryTable.appendChild(row);
-                        });
-                        
-                        // Add event listeners to delete buttons
-                        document.querySelectorAll('.delete-inventory-btn').forEach(btn => {
-                            btn.addEventListener('click', function() {
-                                const index = parseInt(this.getAttribute('data-index'));
-                                deleteInventoryItem(index);
-                            });
-                        });
-                    }
-                    
-                    function deleteInventoryItem(index) {
-                        if (confirm('Apakah Anda yakin ingin menghapus data inventory ini?')) {
-                            inventoryData.splice(index, 1);
-                            localStorage.setItem(`inventoryData_${userKey}`, JSON.stringify(inventoryData));
-                            renderInventoryData();
-                            showToast('Data inventory berhasil dihapus!');
-                        }
-                    }
-                    
                     // Add new inventory data
                     if (addInventoryBtn) {
                         addInventoryBtn.addEventListener('click', function() {
@@ -2560,103 +2726,9 @@
                     }
                     
                     // Data Count Functions
-                    function renderDataCountTable() {
-                        if (!dataCountTable) return;
-                        
-                        const startDate = new Date(startDateFilter.value);
-                        const endDate = new Date(endDateFilter.value);
-                        endDate.setHours(23, 59, 59, 999); // Set to end of day
-                        
-                        let cycleCountData = JSON.parse(localStorage.getItem(`cycleCountData_${userKey}`)) || [];
-                        
-                        // Filter data by date range
-                        const filteredData = cycleCountData.filter(item => {
-                            const itemDate = new Date(item.timestamp);
-                            return itemDate >= startDate && itemDate <= endDate;
-                        });
-                        
-                        dataCountTable.innerHTML = '';
-                        
-                        if (filteredData.length === 0) {
-                            const row = document.createElement('tr');
-                            row.innerHTML = `<td colspan="8" class="text-center py-4 text-muted">Tidak ada data count</td>`;
-                            dataCountTable.appendChild(row);
-                            return;
-                        }
-                        
-                        filteredData.forEach((item, index) => {
-                            const row = document.createElement('tr');
-                            const date = new Date(item.timestamp);
-                            const formattedDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-                            
-                            row.innerHTML = `
-                                <td>
-                                    <input type="checkbox" class="form-check-input data-checkbox" data-index="${index}">
-                                </td>
-                                <td>${formattedDate}</td>
-                                <td>${item.location}</td>
-                                <td>${item.ean}</td>
-                                <td>${item.sku}</td>
-                                <td>${item.countType}</td>
-                                <td>${item.qty}</td>
-                                <td>
-                                    <button class="btn btn-sm btn-danger delete-data-btn" data-index="${index}">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </td>
-                            `;
-                            dataCountTable.appendChild(row);
-                        });
-                        
-                        // Add event listeners to checkboxes
-                        document.querySelectorAll('.data-checkbox').forEach(checkbox => {
-                            checkbox.addEventListener('change', updateSelectAllCheckbox);
-                        });
-                        
-                        // Add event listeners to delete buttons
-                        document.querySelectorAll('.delete-data-btn').forEach(btn => {
-                            btn.addEventListener('click', function() {
-                                const index = parseInt(this.getAttribute('data-index'));
-                                deleteDataCountItem(index);
-                            });
-                        });
-                    }
-                    
-                    function updateSelectAllCheckbox() {
-                        const allCheckboxes = document.querySelectorAll('.data-checkbox');
-                        const checkedCheckboxes = document.querySelectorAll('.data-checkbox:checked');
-                        
-                        if (selectAllCheckbox) {
-                            selectAllCheckbox.checked = allCheckboxes.length > 0 && allCheckboxes.length === checkedCheckboxes.length;
-                        }
-                    }
-                    
-                    // Select all checkbox event
-                    if (selectAllCheckbox) {
-                        selectAllCheckbox.addEventListener('change', function() {
-                            const checkboxes = document.querySelectorAll('.data-checkbox');
-                            checkboxes.forEach(checkbox => {
-                                checkbox.checked = selectAllCheckbox.checked;
-                            });
-                        });
-                    }
-                    
                     // Filter button event
                     if (filterBtn) {
                         filterBtn.addEventListener('click', renderDataCountTable);
-                    }
-                    
-                    // Delete single data count item
-                    function deleteDataCountItem(index) {
-                        if (!confirm('Apakah Anda yakin ingin menghapus data ini?')) {
-                            return;
-                        }
-                        
-                        let cycleCountData = JSON.parse(localStorage.getItem(`cycleCountData_${userKey}`)) || [];
-                        cycleCountData.splice(index, 1);
-                        localStorage.setItem(`cycleCountData_${userKey}`, JSON.stringify(cycleCountData));
-                        renderDataCountTable();
-                        showToast('Data berhasil dihapus');
                     }
                     
                     // Delete selected data
@@ -2734,6 +2806,16 @@
                             link.click();
                             document.body.removeChild(link);
                             showToast('Data berhasil diexport');
+                        });
+                    }
+                    
+                    // Select all checkbox event
+                    if (selectAllCheckbox) {
+                        selectAllCheckbox.addEventListener('change', function() {
+                            const checkboxes = document.querySelectorAll('.data-checkbox');
+                            checkboxes.forEach(checkbox => {
+                                checkbox.checked = selectAllCheckbox.checked;
+                            });
                         });
                     }
                     
