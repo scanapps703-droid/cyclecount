@@ -1226,6 +1226,144 @@
             }, 3000);
         }
         
+        // Fungsi untuk menguji koneksi GitHub
+        async function testGithubConnection(config = null) {
+            // Jika config tidak diberikan, maka membaca dari input
+            if (config === null) {
+                const githubTokenEl = document.getElementById('github-token');
+                const githubOwnerEl = document.getElementById('github-owner');
+                const githubRepoEl = document.getElementById('github-repo');
+                
+                if (!githubTokenEl || !githubOwnerEl || !githubRepoEl) {
+                    // Elemen tidak ditemukan, mungkin tab belum aktif
+                    console.error('Element konfigurasi GitHub tidak ditemukan');
+                    return false;
+                }
+                
+                config = {
+                    token: githubTokenEl.value,
+                    owner: githubOwnerEl.value,
+                    repo: githubRepoEl.value
+                };
+            }
+            
+            const statusElement = document.getElementById('github-connection-status');
+            const testResultElement = document.getElementById('github-connection-test-result');
+            
+            if (!config.token || !config.owner || !config.repo) {
+                if (statusElement) {
+                    statusElement.className = 'github-status disconnected';
+                    statusElement.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Tidak Terkonfigurasi';
+                }
+                if (testResultElement) {
+                    testResultElement.innerHTML = '<div class="alert alert-warning mt-3">Konfigurasi GitHub belum lengkap</div>';
+                }
+                return false;
+            }
+            
+            if (statusElement) {
+                statusElement.className = 'github-status checking';
+                statusElement.innerHTML = '<i class="fas fa-circle-notch fa-spin me-1"></i> GitHub: Mengecek...';
+            }
+            
+            try {
+                const url = `https://api.github.com/repos/${config.owner}/${config.repo}`;
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `token ${config.token}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                
+                if (response.ok) {
+                    if (statusElement) {
+                        statusElement.className = 'github-status connected';
+                        statusElement.innerHTML = '<i class="fas fa-check-circle me-1"></i> GitHub: Terhubung';
+                    }
+                    if (testResultElement) {
+                        testResultElement.innerHTML = '<div class="alert alert-success mt-3">Koneksi GitHub berhasil!</div>';
+                    }
+                    return true;
+                } else {
+                    if (statusElement) {
+                        statusElement.className = 'github-status disconnected';
+                        statusElement.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Gagal';
+                    }
+                    if (testResultElement) {
+                        testResultElement.innerHTML = `<div class="alert alert-danger mt-3">Gagal terhubung ke GitHub: ${response.status} ${response.statusText}</div>`;
+                    }
+                    return false;
+                }
+            } catch (error) {
+                console.error('Error testing GitHub connection:', error);
+                if (statusElement) {
+                    statusElement.className = 'github-status disconnected';
+                    statusElement.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Error';
+                }
+                if (testResultElement) {
+                    testResultElement.innerHTML = `<div class="alert alert-danger mt-3">Error: ${error.message}</div>`;
+                }
+                return false;
+            }
+        }
+        
+        // Function to load GitHub configuration
+        function loadGithubConfig() {
+            const githubToken = document.getElementById('github-token');
+            const githubOwner = document.getElementById('github-owner');
+            const githubRepo = document.getElementById('github-repo');
+            const githubBranch = document.getElementById('github-branch');
+            const syncInterval = document.getElementById('sync-interval');
+            const autoSyncEnabled = document.getElementById('auto-sync-enabled');
+            const saveGithubConfigBtn = document.getElementById('save-github-config');
+            
+            if (!githubToken || !githubOwner || !githubRepo || !githubBranch || !syncInterval || !autoSyncEnabled || !saveGithubConfigBtn) return;
+            
+            const config = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
+            githubToken.value = config.token || '';
+            githubOwner.value = config.owner || '';
+            githubRepo.value = config.repo || '';
+            githubBranch.value = config.branch || 'main';
+            syncInterval.value = config.syncInterval || 5;
+            autoSyncEnabled.checked = config.autoSyncEnabled || false;
+            
+            // Test connection when loading config
+            testGithubConnection();
+            
+            // Start auto sync if enabled
+            if (config.autoSyncEnabled) {
+                startAutoSync(config.syncInterval || 5);
+            }
+            
+            // Pasang event listener untuk save button
+            saveGithubConfigBtn.addEventListener('click', function() {
+                const config = {
+                    token: githubToken.value,
+                    owner: githubOwner.value,
+                    repo: githubRepo.value,
+                    branch: githubBranch.value,
+                    syncInterval: parseInt(syncInterval.value) || 5,
+                    autoSyncEnabled: autoSyncEnabled.checked
+                };
+                
+                localStorage.setItem(`githubConfig_${userKey}`, JSON.stringify(config));
+                showToast('Konfigurasi GitHub berhasil disimpan!');
+                
+                // Test connection after saving - dengan parameter config
+                testGithubConnection(config);
+                
+                // Start auto sync if enabled
+                if (autoSyncInterval) {
+                    clearInterval(autoSyncInterval);
+                    autoSyncInterval = null;
+                }
+                
+                if (config.autoSyncEnabled) {
+                    startAutoSync(config.syncInterval);
+                }
+            });
+        }
+        
         // Fungsi untuk render data count table
         function renderDataCountTable() {
             const dataCountTable = document.getElementById('data-count-table') ? document.getElementById('data-count-table').querySelector('tbody') : null;
@@ -1464,67 +1602,43 @@
             }
         }
         
-        // Fungsi untuk menguji koneksi GitHub
-        async function testGithubConnection() {
+        // Start auto sync
+        function startAutoSync(intervalMinutes) {
+            if (autoSyncInterval) {
+                clearInterval(autoSyncInterval);
+            }
+            
+            autoSyncInterval = setInterval(() => {
+                showToast('Memulai sinkronisasi otomatis...', 'info');
+                autoSyncToGitHub();
+            }, intervalMinutes * 60 * 1000);
+        }
+        
+        // Function to auto-sync data to GitHub
+        function autoSyncToGitHub() {
+            // Check if auto-sync is enabled
             const config = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
-            const statusElement = document.getElementById('github-connection-status');
-            const testResultElement = document.getElementById('github-connection-test-result');
+            if (!config.autoSyncEnabled) {
+                return;
+            }
             
             if (!config.token || !config.owner || !config.repo) {
-                if (statusElement) {
-                    statusElement.className = 'github-status disconnected';
-                    statusElement.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Tidak Terkonfigurasi';
-                }
-                if (testResultElement) {
-                    testResultElement.innerHTML = '<div class="alert alert-warning mt-3">Konfigurasi GitHub belum lengkap</div>';
-                }
-                return false;
+                return;
             }
             
-            if (statusElement) {
-                statusElement.className = 'github-status checking';
-                statusElement.innerHTML = '<i class="fas fa-circle-notch fa-spin me-1"></i> GitHub: Mengecek...';
-            }
+            showToast('Memulai sinkronisasi otomatis...', 'info');
             
-            try {
-                const url = `https://api.github.com/repos/${config.owner}/${config.repo}`;
-                const response = await fetch(url, {
-                    headers: {
-                        'Authorization': `token ${config.token}`,
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
-                });
-                
-                if (response.ok) {
-                    if (statusElement) {
-                        statusElement.className = 'github-status connected';
-                        statusElement.innerHTML = '<i class="fas fa-check-circle me-1"></i> GitHub: Terhubung';
-                    }
-                    if (testResultElement) {
-                        testResultElement.innerHTML = '<div class="alert alert-success mt-3">Koneksi GitHub berhasil!</div>';
-                    }
-                    return true;
-                } else {
-                    if (statusElement) {
-                        statusElement.className = 'github-status disconnected';
-                        statusElement.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Gagal';
-                    }
-                    if (testResultElement) {
-                        testResultElement.innerHTML = `<div class="alert alert-danger mt-3">Gagal terhubung ke GitHub: ${response.status} ${response.statusText}</div>`;
-                    }
-                    return false;
-                }
-            } catch (error) {
-                console.error('Error testing GitHub connection:', error);
-                if (statusElement) {
-                    statusElement.className = 'github-status disconnected';
-                    statusElement.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Error';
-                }
-                if (testResultElement) {
-                    testResultElement.innerHTML = `<div class="alert alert-danger mt-3">Error: ${error.message}</div>`;
-                }
-                return false;
-            }
+            // Sync all data
+            syncDataWithGithub('cycle_count', 'cycleCount');
+            setTimeout(() => {
+                syncDataWithGithub('master_location', 'masterLocation');
+            }, 1000);
+            setTimeout(() => {
+                syncDataWithGithub('master_ean', 'masterEan');
+            }, 2000);
+            setTimeout(() => {
+                syncDataWithGithub('inventory_data', 'inventory');
+            }, 3000);
         }
         
         document.addEventListener('DOMContentLoaded', function() {
@@ -1784,15 +1898,6 @@
                     const deleteSelectedBtn = document.getElementById('delete-selected-btn');
                     const selectAllCheckbox = document.getElementById('select-all');
                     
-                    // GitHub configuration elements
-                    const githubToken = document.getElementById('github-token');
-                    const githubOwner = document.getElementById('github-owner');
-                    const githubRepo = document.getElementById('github-repo');
-                    const githubBranch = document.getElementById('github-branch');
-                    const syncInterval = document.getElementById('sync-interval');
-                    const autoSyncEnabled = document.getElementById('auto-sync-enabled');
-                    const saveGithubConfigBtn = document.getElementById('save-github-config');
-                    
                     // Sync buttons
                     const syncCycleCountBtn = document.getElementById('sync-cyclecount');
                     const syncMasterLocationBtn = document.getElementById('sync-master-location');
@@ -1868,401 +1973,6 @@
                         autoSyncToggle.addEventListener('change', function() {
                             localStorage.setItem(`autoSyncEnabled_${userKey}`, this.checked);
                         });
-                    }
-                    
-                    // Function to load GitHub configuration
-                    function loadGithubConfig() {
-                        if (!githubToken || !githubOwner || !githubRepo || !githubBranch || !syncInterval || !autoSyncEnabled) return;
-                        
-                        const config = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
-                        githubToken.value = config.token || '';
-                        githubOwner.value = config.owner || '';
-                        githubRepo.value = config.repo || '';
-                        githubBranch.value = config.branch || 'main';
-                        syncInterval.value = config.syncInterval || 5;
-                        autoSyncEnabled.checked = config.autoSyncEnabled || false;
-                        
-                        // Test connection when loading config
-                        testGithubConnection();
-                        
-                        // Start auto sync if enabled
-                        if (config.autoSyncEnabled) {
-                            startAutoSync(config.syncInterval || 5);
-                        }
-                    }
-                    
-                    // Save GitHub configuration
-                    if (saveGithubConfigBtn) {
-                        saveGithubConfigBtn.addEventListener('click', function() {
-                            const config = {
-                                token: githubToken.value,
-                                owner: githubOwner.value,
-                                repo: githubRepo.value,
-                                branch: githubBranch.value,
-                                syncInterval: parseInt(syncInterval.value) || 5,
-                                autoSyncEnabled: autoSyncEnabled.checked
-                            };
-                            
-                            localStorage.setItem(`githubConfig_${userKey}`, JSON.stringify(config));
-                            showToast('Konfigurasi GitHub berhasil disimpan!');
-                            
-                            // Test connection after saving
-                            testGithubConnection();
-                            
-                            // Start auto sync if enabled
-                            if (autoSyncInterval) {
-                                clearInterval(autoSyncInterval);
-                                autoSyncInterval = null;
-                            }
-                            
-                            if (config.autoSyncEnabled) {
-                                startAutoSync(config.syncInterval);
-                            }
-                        });
-                    }
-                    
-                    // Start auto sync
-                    function startAutoSync(intervalMinutes) {
-                        if (autoSyncInterval) {
-                            clearInterval(autoSyncInterval);
-                        }
-                        
-                        autoSyncInterval = setInterval(() => {
-                            showToast('Memulai sinkronisasi otomatis...', 'info');
-                            autoSyncToGitHub();
-                        }, intervalMinutes * 60 * 1000);
-                    }
-                    
-                    // Sync data to GitHub (push and pull)
-                    if (syncCycleCountBtn) {
-                        syncCycleCountBtn.addEventListener('click', function() {
-                            syncDataWithGithub('cycle_count', 'cycleCount', syncCycleCountProgress, syncCycleCountBtn);
-                        });
-                    }
-                    
-                    if (syncMasterLocationBtn) {
-                        syncMasterLocationBtn.addEventListener('click', function() {
-                            syncDataWithGithub('master_location', 'masterLocation', syncMasterLocationProgress, syncMasterLocationBtn);
-                        });
-                    }
-                    
-                    if (syncMasterEanBtn) {
-                        syncMasterEanBtn.addEventListener('click', function() {
-                            syncDataWithGithub('master_ean', 'masterEan', syncMasterEanProgress, syncMasterEanBtn);
-                        });
-                    }
-                    
-                    if (syncInventoryBtn) {
-                        syncInventoryBtn.addEventListener('click', function() {
-                            syncDataWithGithub('inventory_data', 'inventory', syncInventoryProgress, syncInventoryBtn);
-                        });
-                    }
-                    
-                    // Function to sync data with GitHub (push then pull)
-                    function syncDataWithGithub(dataType, dataTypeName, progressBar, button) {
-                        const config = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
-                        
-                        if (!config.token || !config.owner || !config.repo) {
-                            showToast('Harap lengkapi konfigurasi GitHub terlebih dahulu', 'error');
-                            return;
-                        }
-                        
-                        // Show progress bar and disable button
-                        if (progressBar) {
-                            progressBar.style.display = 'block';
-                            progressBar.querySelector('.progress-bar').style.width = '0%';
-                        }
-                        
-                        if (button) {
-                            button.disabled = true;
-                            const icon = button.querySelector('i');
-                            icon.classList.add('syncing');
-                        }
-                        
-                        // Get data from localStorage
-                        let data, fileName;
-                        if (dataType === 'cycle_count') {
-                            data = JSON.parse(localStorage.getItem(`cycleCountData_${userKey}`)) || [];
-                            fileName = 'cycle_count.json';
-                        } else if (dataType === 'master_location') {
-                            data = JSON.parse(localStorage.getItem(`masterLocationData_${userKey}`)) || [];
-                            fileName = 'master_location.json';
-                        } else if (dataType === 'master_ean') {
-                            data = JSON.parse(localStorage.getItem(`masterEanData_${userKey}`)) || [];
-                            fileName = 'master_ean.json';
-                        } else if (dataType === 'inventory_data') {
-                            data = JSON.parse(localStorage.getItem(`inventoryData_${userKey}`)) || [];
-                            fileName = 'inventory_data.json';
-                        }
-                        
-                        const content = JSON.stringify(data, null, 2);
-                        
-                        // Check if data is larger than 1MB
-                        const contentSize = new Blob([content]).size;
-                        const isLargeData = contentSize > 1e6; // 1MB
-                        
-                        showToast(`Menyinkronkan data ${dataTypeName} dengan GitHub...`, 'info');
-                        
-                        // Update progress
-                        if (progressBar) {
-                            progressBar.querySelector('.progress-bar').style.width = '30%';
-                        }
-                        
-                        // Function to push data to GitHub
-                        function pushData() {
-                            return new Promise((resolve, reject) => {
-                                // GitHub API endpoint
-                                const url = `https://api.github.com/repos/${config.owner}/${config.repo}/contents/${fileName}`;
-                                
-                                // Check if file exists to get SHA for update
-                                fetch(url, {
-                                    headers: {
-                                        'Authorization': `token ${config.token}`,
-                                        'Accept': 'application/vnd.github.v3+json'
-                                    }
-                                })
-                                .then(response => response.json())
-                                .then(fileInfo => {
-                                    const sha = fileInfo.sha;
-                                    
-                                    // Update existing file
-                                    return fetch(url, {
-                                        method: 'PUT',
-                                        headers: {
-                                            'Authorization': `token ${config.token}`,
-                                            'Content-Type': 'application/json',
-                                            'Accept': 'application/vnd.github.v3+json'
-                                        },
-                                        body: JSON.stringify({
-                                            message: `Update ${fileName}`,
-                                            content: btoa(unescape(encodeURIComponent(content))),
-                                            sha: sha,
-                                            branch: config.branch
-                                        })
-                                    });
-                                })
-                                .catch(() => {
-                                    // Create new file if it doesn't exist
-                                    return fetch(url, {
-                                        method: 'PUT',
-                                        headers: {
-                                            'Authorization': `token ${config.token}`,
-                                            'Content-Type': 'application/json',
-                                            'Accept': 'application/vnd.github.v3+json'
-                                        },
-                                        body: JSON.stringify({
-                                            message: `Create ${fileName}`,
-                                            content: btoa(unescape(encodeURIComponent(content))),
-                                            branch: config.branch
-                                        })
-                                    });
-                                })
-                                .then(response => response.json())
-                                .then(data => {
-                                    // Update progress
-                                    if (progressBar) {
-                                        progressBar.querySelector('.progress-bar').style.width = '60%';
-                                    }
-                                    
-                                    resolve();
-                                })
-                                .catch(error => {
-                                    reject(error);
-                                });
-                            });
-                        }
-                        
-                        // Function to pull data from GitHub
-                        function pullData() {
-                            return new Promise((resolve, reject)=> {
-                                const url = `https://api.github.com/repos/${config.owner}/${config.repo}/contents/${fileName}`;
-                                
-                                fetch(url, {
-                                    headers: {
-                                        'Authorization': `token ${config.token}`,
-                                        'Accept': 'application/vnd.github.v3+json'
-                                    }
-                                })
-                                .then(response => {
-                                    if (!response.ok) {
-                                        // If file doesn't exist, that's okay - we'll create it on next push
-                                        if (response.status === 404) {
-                                            return resolve();
-                                        }
-                                        throw new Error('File tidak ditemukan di repository');
-                                    }
-                                    return response.json();
-                                })
-                                .then(data => {
-                                    const content = atob(data.content);
-                                    const jsonData = JSON.parse(content);
-                                    
-                                    // Merge data instead of replacing
-                                    if (dataType === 'cycle_count') {
-                                        const localData = JSON.parse(localStorage.getItem(`cycleCountData_${userKey}`)) || [];
-                                        // Create a map to avoid duplicates based on timestamp, location, ean, and countType
-                                        const dataMap = new Map();
-                                        
-                                        // Add local data first
-                                        localData.forEach(item => {
-                                            const key = `${item.timestamp}-${item.location}-${item.ean}-${item.countType}`;
-                                            dataMap.set(key, item);
-                                        });
-                                        
-                                        // Add remote data, local data takes precedence
-                                        jsonData.forEach(item => {
-                                            const key = `${item.timestamp}-${item.location}-${item.ean}-${item.countType}`;
-                                            if (!dataMap.has(key)) {
-                                                dataMap.set(key, item);
-                                            }
-                                        });
-                                        
-                                        // Convert back to array
-                                        const mergedData = Array.from(dataMap.values());
-                                        localStorage.setItem(`cycleCountData_${userKey}`, JSON.stringify(mergedData));
-                                    } else if (dataType === 'master_location') {
-                                        const localData = JSON.parse(localStorage.getItem(`masterLocationData_${userKey}`)) || [];
-                                        const remoteDataMap = new Map();
-                                        
-                                        // Create map of remote data
-                                        jsonData.forEach(item => {
-                                            remoteDataMap.set(item.validationCode, item);
-                                        });
-                                        
-                                        // Merge with local data, local data takes precedence
-                                        localData.forEach(item => {
-                                            remoteDataMap.set(item.validationCode, item);
-                                        });
-                                        
-                                        // Convert back to array
-                                        const mergedData = Array.from(remoteDataMap.values());
-                                        localStorage.setItem(`masterLocationData_${userKey}`, JSON.stringify(mergedData));
-                                        masterLocationData = mergedData;
-                                    } else if (dataType === 'master_ean') {
-                                        const localData = JSON.parse(localStorage.getItem(`masterEanData_${userKey}`)) || [];
-                                        const remoteDataMap = new Map();
-                                        
-                                        // Create map of remote data
-                                        jsonData.forEach(item => {
-                                            remoteDataMap.set(item.ean, item);
-                                        });
-                                        
-                                        // Merge with local data, local data takes precedence
-                                        localData.forEach(item => {
-                                            remoteDataMap.set(item.ean, item);
-                                        });
-                                        
-                                        // Convert back to array
-                                        const mergedData = Array.from(remoteDataMap.values());
-                                        localStorage.setItem(`masterEanData_${userKey}`, JSON.stringify(mergedData));
-                                        masterEanData = mergedData;
-                                    } else if (dataType === 'inventory_data') {
-                                        const localData = JSON.parse(localStorage.getItem(`inventoryData_${userKey}`)) || [];
-                                        const remoteDataMap = new Map();
-                                        
-                                        // Create map of remote data
-                                        jsonData.forEach(item => {
-                                            const key = `${item.locationId}-${item.sku}-${item.traceId}`;
-                                            remoteDataMap.set(key, item);
-                                        });
-                                        
-                                        // Merge with local data, local data takes precedence
-                                        localData.forEach(item => {
-                                            const key = `${item.locationId}-${item.sku}-${item.traceId}`;
-                                            remoteDataMap.set(key, item);
-                                        });
-                                        
-                                        // Convert back to array
-                                        const mergedData = Array.from(remoteDataMap.values());
-                                        localStorage.setItem(`inventoryData_${userKey}`, JSON.stringify(mergedData));
-                                        inventoryData = mergedData;
-                                    }
-                                    
-                                    // Update progress
-                                    if (progressBar) {
-                                        progressBar.querySelector('.progress-bar').style.width = '100%';
-                                    }
-                                    
-                                    resolve();
-                                })
-                                .catch(error => {
-                                    reject(error);
-                                });
-                            });
-                        }
-                        
-                        // Execute push then pull
-                        pushData()
-                            .then(() => {
-                                return new Promise(resolve => setTimeout(resolve, 1000)); // Wait a second
-                            })
-                            .then(() => {
-                                return pullData();
-                            })
-                            .then(() => {
-                                showToast(`Data ${dataTypeName} berhasil disinkronkan dengan GitHub`);
-                                
-                                // Update last sync time
-                                localStorage.setItem(`lastSync_${dataType}_${userKey}`, Date.now().toString());
-                                loadLastSyncInfo();
-                                
-                                // Refresh the appropriate table
-                                if (dataType === 'cycle_count') {
-                                    renderDataCountTable();
-                                } else if (dataType === 'master_location') {
-                                    renderMasterLocationData();
-                                } else if (dataType === 'master_ean') {
-                                    renderMasterEanData();
-                                } else if (dataType === 'inventory_data') {
-                                    renderInventoryData();
-                                    renderCurrentLocationSKUCount(locationField.value.trim());
-                                }
-                            })
-                            .catch(error => {
-                                console.error('Error:', error);
-                                showToast('Gagal menyinkronkan data dengan GitHub: ' + error.message, 'error');
-                            })
-                            .finally(() => {
-                                // Hide progress bar and enable button
-                                if (progressBar) {
-                                    setTimeout(() => {
-                                        progressBar.style.display = 'none';
-                                    }, 1000);
-                                }
-                                
-                                if (button) {
-                                    button.disabled = false;
-                                    const icon = button.querySelector('i');
-                                    icon.classList.remove('syncing');
-                                }
-                            });
-                    }
-                    
-                    // Function to auto-sync data to GitHub
-                    function autoSyncToGitHub() {
-                        // Check if auto-sync is enabled
-                        const config = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
-                        if (!config.autoSyncEnabled) {
-                            return;
-                        }
-                        
-                        if (!config.token || !config.owner || !config.repo) {
-                            return;
-                        }
-                        
-                        showToast('Memulai sinkronisasi otomatis...', 'info');
-                        
-                        // Sync all data
-                        syncDataWithGithub('cycle_count', 'cycleCount');
-                        setTimeout(() => {
-                            syncDataWithGithub('master_location', 'masterLocation');
-                        }, 1000);
-                        setTimeout(() => {
-                            syncDataWithGithub('master_ean', 'masterEan');
-                        }, 2000);
-                        setTimeout(() => {
-                            syncDataWithGithub('inventory_data', 'inventory');
-                        }, 3000);
                     }
                     
                     // Function to display current location SKU count
@@ -3168,9 +2878,6 @@
                     
                     // Initialize inventory data table
                     renderInventoryData();
-                    
-                    // Load GitHub configuration
-                    loadGithubConfig();
                     
                     // Load last sync info
                     loadLastSyncInfo();
