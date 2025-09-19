@@ -567,6 +567,45 @@
         .syncing {
             animation: syncSpin 1.5s linear infinite;
         }
+
+        /* GitHub Status Indicator */
+        .github-status {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+        
+        .github-status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .github-status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .github-status.checking {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        /* Upload Animation */
+        .upload-progress {
+            display: none;
+            margin-top: 15px;
+        }
+        
+        .upload-progress .progress-text {
+            text-align: center;
+            margin-top: 5px;
+            font-size: 14px;
+            color: #6c757d;
+        }
     </style>
 </head>
 <body>
@@ -612,7 +651,10 @@
                 </a>
                 <div class="d-flex align-items-center">
                     <span class="me-3 d-none d-md-block text-muted" id="user-welcome">Halo, User</span>
-                    <button class="btn btn-outline-danger btn-sm" id="logout-btn">
+                    <span id="github-connection-status" class="github-status checking">
+                        <i class="fas fa-circle-notch fa-spin me-1"></i> Checking GitHub
+                    </span>
+                    <button class="btn btn-outline-danger btn-sm ms-2" id="logout-btn">
                         <i class="fas fa-sign-out-alt me-1"></i> Logout
                     </button>
                 </div>
@@ -888,6 +930,14 @@
                         </button>
                     </div>
 
+                    <!-- Upload Progress -->
+                    <div class="upload-progress" id="upload-master-location-progress">
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-text">Memproses data: <span id="upload-master-location-text">0%</span></div>
+                    </div>
+
                     <!-- Excel Format Info -->
                     <div class="excel-format">
                         <h5><i class="fas fa-info-circle"></i> Format File Excel</h5>
@@ -952,6 +1002,14 @@
                         </button>
                     </div>
 
+                    <!-- Upload Progress -->
+                    <div class="upload-progress" id="upload-master-ean-progress">
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-text">Memproses data: <span id="upload-master-ean-text">0%</span></div>
+                    </div>
+
                     <!-- Excel Format Info -->
                     <div class="excel-format">
                         <h5><i class="fas fa-info-circle"></i> Format File Excel</h5>
@@ -1014,6 +1072,14 @@
                         <button id="add-inventory-btn" class="btn btn-primary">
                             <i class="fas fa-plus"></i> Tambah Data
                         </button>
+                    </div>
+
+                    <!-- Upload Progress -->
+                    <div class="upload-progress" id="upload-inventory-progress">
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-text">Memproses data: <span id="upload-inventory-text">0%</span></div>
                     </div>
 
                     <!-- Excel Format Info -->
@@ -1104,6 +1170,8 @@
                         <button type="button" class="btn btn-primary" id="save-github-config">
                             <i class="fas fa-save"></i> Simpan Konfigurasi
                         </button>
+
+                        <div class="mt-3" id="github-connection-test-result"></div>
                     </div>
                     
                     <div class="github-config">
@@ -1396,6 +1464,69 @@
             }
         }
         
+        // Fungsi untuk menguji koneksi GitHub
+        async function testGithubConnection() {
+            const config = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
+            const statusElement = document.getElementById('github-connection-status');
+            const testResultElement = document.getElementById('github-connection-test-result');
+            
+            if (!config.token || !config.owner || !config.repo) {
+                if (statusElement) {
+                    statusElement.className = 'github-status disconnected';
+                    statusElement.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Tidak Terkonfigurasi';
+                }
+                if (testResultElement) {
+                    testResultElement.innerHTML = '<div class="alert alert-warning mt-3">Konfigurasi GitHub belum lengkap</div>';
+                }
+                return false;
+            }
+            
+            if (statusElement) {
+                statusElement.className = 'github-status checking';
+                statusElement.innerHTML = '<i class="fas fa-circle-notch fa-spin me-1"></i> GitHub: Mengecek...';
+            }
+            
+            try {
+                const url = `https://api.github.com/repos/${config.owner}/${config.repo}`;
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `token ${config.token}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                
+                if (response.ok) {
+                    if (statusElement) {
+                        statusElement.className = 'github-status connected';
+                        statusElement.innerHTML = '<i class="fas fa-check-circle me-1"></i> GitHub: Terhubung';
+                    }
+                    if (testResultElement) {
+                        testResultElement.innerHTML = '<div class="alert alert-success mt-3">Koneksi GitHub berhasil!</div>';
+                    }
+                    return true;
+                } else {
+                    if (statusElement) {
+                        statusElement.className = 'github-status disconnected';
+                        statusElement.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Gagal';
+                    }
+                    if (testResultElement) {
+                        testResultElement.innerHTML = `<div class="alert alert-danger mt-3">Gagal terhubung ke GitHub: ${response.status} ${response.statusText}</div>`;
+                    }
+                    return false;
+                }
+            } catch (error) {
+                console.error('Error testing GitHub connection:', error);
+                if (statusElement) {
+                    statusElement.className = 'github-status disconnected';
+                    statusElement.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Error';
+                }
+                if (testResultElement) {
+                    testResultElement.innerHTML = `<div class="alert alert-danger mt-3">Error: ${error.message}</div>`;
+                }
+                return false;
+            }
+        }
+        
         document.addEventListener('DOMContentLoaded', function() {
             // Login functionality
             const loginContainer = document.getElementById('login-container');
@@ -1509,6 +1640,9 @@
                     
                     // Initialize the app with user-specific data
                     initApp();
+                    
+                    // Test GitHub connection
+                    setTimeout(testGithubConnection, 1000);
                 } catch (error) {
                     console.error('Error in showApp:', error);
                     throw error;
@@ -1622,12 +1756,16 @@
                     const clearMasterLocationBtn = document.getElementById('clear-master-location-btn');
                     const addMasterLocationBtn = document.getElementById('add-master-location-btn');
                     const masterLocationFileInput = document.getElementById('master-location-file-input');
+                    const uploadMasterLocationProgress = document.getElementById('upload-master-location-progress');
+                    const uploadMasterLocationText = document.getElementById('upload-master-location-text');
                     
                     const uploadMasterEanBtn = document.getElementById('upload-master-ean-btn');
                     const downloadMasterEanBtn = document.getElementById('download-master-ean-btn');
                     const clearMasterEanBtn = document.getElementById('clear-master-ean-btn');
                     const addMasterEanBtn = document.getElementById('add-master-ean-btn');
                     const masterEanFileInput = document.getElementById('master-ean-file-input');
+                    const uploadMasterEanProgress = document.getElementById('upload-master-ean-progress');
+                    const uploadMasterEanText = document.getElementById('upload-master-ean-text');
                     
                     // Inventory data elements
                     const uploadInventoryBtn = document.getElementById('upload-inventory-btn');
@@ -1635,6 +1773,8 @@
                     const clearInventoryBtn = document.getElementById('clear-inventory-btn');
                     const addInventoryBtn = document.getElementById('add-inventory-btn');
                     const inventoryFileInput = document.getElementById('inventory-file-input');
+                    const uploadInventoryProgress = document.getElementById('upload-inventory-progress');
+                    const uploadInventoryText = document.getElementById('upload-inventory-text');
                     
                     // Data count elements
                     const startDateFilter = document.getElementById('start-date');
@@ -1742,6 +1882,9 @@
                         syncInterval.value = config.syncInterval || 5;
                         autoSyncEnabled.checked = config.autoSyncEnabled || false;
                         
+                        // Test connection when loading config
+                        testGithubConnection();
+                        
                         // Start auto sync if enabled
                         if (config.autoSyncEnabled) {
                             startAutoSync(config.syncInterval || 5);
@@ -1762,6 +1905,9 @@
                             
                             localStorage.setItem(`githubConfig_${userKey}`, JSON.stringify(config));
                             showToast('Konfigurasi GitHub berhasil disimpan!');
+                            
+                            // Test connection after saving
+                            testGithubConnection();
                             
                             // Start auto sync if enabled
                             if (autoSyncInterval) {
@@ -1939,6 +2085,10 @@
                                 })
                                 .then(response => {
                                     if (!response.ok) {
+                                        // If file doesn't exist, that's okay - we'll create it on next push
+                                        if (response.status === 404) {
+                                            return resolve();
+                                        }
                                         throw new Error('File tidak ditemukan di repository');
                                     }
                                     return response.json();
@@ -1947,18 +2097,85 @@
                                     const content = atob(data.content);
                                     const jsonData = JSON.parse(content);
                                     
-                                    // Save to localStorage
+                                    // Merge data instead of replacing
                                     if (dataType === 'cycle_count') {
-                                        localStorage.setItem(`cycleCountData_${userKey}`, JSON.stringify(jsonData));
+                                        const localData = JSON.parse(localStorage.getItem(`cycleCountData_${userKey}`)) || [];
+                                        // Create a map to avoid duplicates based on timestamp, location, ean, and countType
+                                        const dataMap = new Map();
+                                        
+                                        // Add local data first
+                                        localData.forEach(item => {
+                                            const key = `${item.timestamp}-${item.location}-${item.ean}-${item.countType}`;
+                                            dataMap.set(key, item);
+                                        });
+                                        
+                                        // Add remote data, local data takes precedence
+                                        jsonData.forEach(item => {
+                                            const key = `${item.timestamp}-${item.location}-${item.ean}-${item.countType}`;
+                                            if (!dataMap.has(key)) {
+                                                dataMap.set(key, item);
+                                            }
+                                        });
+                                        
+                                        // Convert back to array
+                                        const mergedData = Array.from(dataMap.values());
+                                        localStorage.setItem(`cycleCountData_${userKey}`, JSON.stringify(mergedData));
                                     } else if (dataType === 'master_location') {
-                                        localStorage.setItem(`masterLocationData_${userKey}`, JSON.stringify(jsonData));
-                                        masterLocationData = jsonData;
+                                        const localData = JSON.parse(localStorage.getItem(`masterLocationData_${userKey}`)) || [];
+                                        const remoteDataMap = new Map();
+                                        
+                                        // Create map of remote data
+                                        jsonData.forEach(item => {
+                                            remoteDataMap.set(item.validationCode, item);
+                                        });
+                                        
+                                        // Merge with local data, local data takes precedence
+                                        localData.forEach(item => {
+                                            remoteDataMap.set(item.validationCode, item);
+                                        });
+                                        
+                                        // Convert back to array
+                                        const mergedData = Array.from(remoteDataMap.values());
+                                        localStorage.setItem(`masterLocationData_${userKey}`, JSON.stringify(mergedData));
+                                        masterLocationData = mergedData;
                                     } else if (dataType === 'master_ean') {
-                                        localStorage.setItem(`masterEanData_${userKey}`, JSON.stringify(jsonData));
-                                        masterEanData = jsonData;
+                                        const localData = JSON.parse(localStorage.getItem(`masterEanData_${userKey}`)) || [];
+                                        const remoteDataMap = new Map();
+                                        
+                                        // Create map of remote data
+                                        jsonData.forEach(item => {
+                                            remoteDataMap.set(item.ean, item);
+                                        });
+                                        
+                                        // Merge with local data, local data takes precedence
+                                        localData.forEach(item => {
+                                            remoteDataMap.set(item.ean, item);
+                                        });
+                                        
+                                        // Convert back to array
+                                        const mergedData = Array.from(remoteDataMap.values());
+                                        localStorage.setItem(`masterEanData_${userKey}`, JSON.stringify(mergedData));
+                                        masterEanData = mergedData;
                                     } else if (dataType === 'inventory_data') {
-                                        localStorage.setItem(`inventoryData_${userKey}`, JSON.stringify(jsonData));
-                                        inventoryData = jsonData;
+                                        const localData = JSON.parse(localStorage.getItem(`inventoryData_${userKey}`)) || [];
+                                        const remoteDataMap = new Map();
+                                        
+                                        // Create map of remote data
+                                        jsonData.forEach(item => {
+                                            const key = `${item.locationId}-${item.sku}-${item.traceId}`;
+                                            remoteDataMap.set(key, item);
+                                        });
+                                        
+                                        // Merge with local data, local data takes precedence
+                                        localData.forEach(item => {
+                                            const key = `${item.locationId}-${item.sku}-${item.traceId}`;
+                                            remoteDataMap.set(key, item);
+                                        });
+                                        
+                                        // Convert back to array
+                                        const mergedData = Array.from(remoteDataMap.values());
+                                        localStorage.setItem(`inventoryData_${userKey}`, JSON.stringify(mergedData));
+                                        inventoryData = mergedData;
                                     }
                                     
                                     // Update progress
@@ -2387,11 +2604,24 @@
                             const file = e.target.files[0];
                             if (!file) return;
                             
+                            // Show upload progress
+                            if (uploadMasterLocationProgress) {
+                                uploadMasterLocationProgress.style.display = 'block';
+                                uploadMasterLocationProgress.querySelector('.progress-bar').style.width = '0%';
+                                if (uploadMasterLocationText) uploadMasterLocationText.textContent = '0%';
+                            }
+                            
                             const reader = new FileReader();
                             reader.onload = function(e) {
                                 try {
                                     const data = new Uint8Array(e.target.result);
                                     const workbook = XLSX.read(data, { type: 'array' });
+                                    
+                                    // Update progress
+                                    if (uploadMasterLocationProgress) {
+                                        uploadMasterLocationProgress.querySelector('.progress-bar').style.width = '30%';
+                                        if (uploadMasterLocationText) uploadMasterLocationText.textContent = '30%';
+                                    }
                                     
                                     // Get first worksheet
                                     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -2402,6 +2632,12 @@
                                     if (jsonData.length === 0) {
                                         showToast('File Excel tidak berisi data', 'error');
                                         return;
+                                    }
+                                    
+                                    // Update progress
+                                    if (uploadMasterLocationProgress) {
+                                        uploadMasterLocationProgress.querySelector('.progress-bar').style.width = '60%';
+                                        if (uploadMasterLocationText) uploadMasterLocationText.textContent = '60%';
                                     }
                                     
                                     // Validate required fields
@@ -2417,14 +2653,37 @@
                                         location: row['Location'] || ''
                                     }));
                                     
+                                    // Update progress
+                                    if (uploadMasterLocationProgress) {
+                                        uploadMasterLocationProgress.querySelector('.progress-bar').style.width = '90%';
+                                        if (uploadMasterLocationText) uploadMasterLocationText.textContent = '90%';
+                                    }
+                                    
                                     // Replace master data
                                     masterLocationData = transformedData;
                                     localStorage.setItem(`masterLocationData_${userKey}`, JSON.stringify(masterLocationData));
                                     renderMasterLocationData();
+                                    
+                                    // Complete progress
+                                    if (uploadMasterLocationProgress) {
+                                        uploadMasterLocationProgress.querySelector('.progress-bar').style.width = '100%';
+                                        if (uploadMasterLocationText) uploadMasterLocationText.textContent = '100%';
+                                        
+                                        // Hide progress after a delay
+                                        setTimeout(() => {
+                                            uploadMasterLocationProgress.style.display = 'none';
+                                        }, 1000);
+                                    }
+                                    
                                     showToast('Master data lokasi berhasil diupload dari Excel!');
                                 } catch (err) {
                                     console.error('Error parsing Excel:', err);
                                     showToast('Error parsing file Excel: ' + err.message, 'error');
+                                    
+                                    // Hide progress on error
+                                    if (uploadMasterLocationProgress) {
+                                        uploadMasterLocationProgress.style.display = 'none';
+                                    }
                                 }
                             };
                             reader.readAsArrayBuffer(file);
@@ -2505,11 +2764,24 @@
                             const file = e.target.files[0];
                             if (!file) return;
                             
+                            // Show upload progress
+                            if (uploadMasterEanProgress) {
+                                uploadMasterEanProgress.style.display = 'block';
+                                uploadMasterEanProgress.querySelector('.progress-bar').style.width = '0%';
+                                if (uploadMasterEanText) uploadMasterEanText.textContent = '0%';
+                            }
+                            
                             const reader = new FileReader();
                             reader.onload = function(e) {
                                 try {
                                     const data = new Uint8Array(e.target.result);
                                     const workbook = XLSX.read(data, { type: 'array' });
+                                    
+                                    // Update progress
+                                    if (uploadMasterEanProgress) {
+                                        uploadMasterEanProgress.querySelector('.progress-bar').style.width = '30%';
+                                        if (uploadMasterEanText) uploadMasterEanText.textContent = '30%';
+                                    }
                                     
                                     // Get first worksheet
                                     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -2520,6 +2792,12 @@
                                     if (jsonData.length === 0) {
                                         showToast('File Excel tidak berisi data', 'error');
                                         return;
+                                    }
+                                    
+                                    // Update progress
+                                    if (uploadMasterEanProgress) {
+                                        uploadMasterEanProgress.querySelector('.progress-bar').style.width = '60%';
+                                        if (uploadMasterEanText) uploadMasterEanText.textContent = '60%';
                                     }
                                     
                                     // Validate required fields
@@ -2535,14 +2813,37 @@
                                         sku: row['SKU'] || ''
                                     }));
                                     
+                                    // Update progress
+                                    if (uploadMasterEanProgress) {
+                                        uploadMasterEanProgress.querySelector('.progress-bar').style.width = '90%';
+                                        if (uploadMasterEanText) uploadMasterEanText.textContent = '90%';
+                                    }
+                                    
                                     // Replace master data
                                     masterEanData = transformedData;
                                     localStorage.setItem(`masterEanData_${userKey}`, JSON.stringify(masterEanData));
                                     renderMasterEanData();
+                                    
+                                    // Complete progress
+                                    if (uploadMasterEanProgress) {
+                                        uploadMasterEanProgress.querySelector('.progress-bar').style.width = '100%';
+                                        if (uploadMasterEanText) uploadMasterEanText.textContent = '100%';
+                                        
+                                        // Hide progress after a delay
+                                        setTimeout(() => {
+                                            uploadMasterEanProgress.style.display = 'none';
+                                        }, 1000);
+                                    }
+                                    
                                     showToast('Master data EAN berhasil diupload dari Excel!');
                                 } catch (err) {
                                     console.error('Error parsing Excel:', err);
                                     showToast('Error parsing file Excel: ' + err.message, 'error');
+                                    
+                                    // Hide progress on error
+                                    if (uploadMasterEanProgress) {
+                                        uploadMasterEanProgress.style.display = 'none';
+                                    }
                                 }
                             };
                             reader.readAsArrayBuffer(file);
@@ -2636,11 +2937,24 @@
                             const file = e.target.files[0];
                             if (!file) return;
                             
+                            // Show upload progress
+                            if (uploadInventoryProgress) {
+                                uploadInventoryProgress.style.display = 'block';
+                                uploadInventoryProgress.querySelector('.progress-bar').style.width = '0%';
+                                if (uploadInventoryText) uploadInventoryText.textContent = '0%';
+                            }
+                            
                             const reader = new FileReader();
                             reader.onload = function(e) {
                                 try {
                                     const data = new Uint8Array(e.target.result);
                                     const workbook = XLSX.read(data, { type: 'array' });
+                                    
+                                    // Update progress
+                                    if (uploadInventoryProgress) {
+                                        uploadInventoryProgress.querySelector('.progress-bar').style.width = '30%';
+                                        if (uploadInventoryText) uploadInventoryText.textContent = '30%';
+                                    }
                                     
                                     // Get first worksheet
                                     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -2651,6 +2965,12 @@
                                     if (jsonData.length === 0) {
                                         showToast('File Excel tidak berisi data', 'error');
                                         return;
+                                    }
+                                    
+                                    // Update progress
+                                    if (uploadInventoryProgress) {
+                                        uploadInventoryProgress.querySelector('.progress-bar').style.width = '60%';
+                                        if (uploadInventoryText) uploadInventoryText.textContent = '60%';
                                     }
                                     
                                     // Validate required fields
@@ -2672,14 +2992,37 @@
                                         qtyOnHand: row['QTY On Hand'] || ''
                                     }));
                                     
+                                    // Update progress
+                                    if (uploadInventoryProgress) {
+                                        uploadInventoryProgress.querySelector('.progress-bar').style.width = '90%';
+                                        if (uploadInventoryText) uploadInventoryText.textContent = '90%';
+                                    }
+                                    
                                     // Replace inventory data
                                     inventoryData = transformedData;
                                     localStorage.setItem(`inventoryData_${userKey}`, JSON.stringify(inventoryData));
                                     renderInventoryData();
+                                    
+                                    // Complete progress
+                                    if (uploadInventoryProgress) {
+                                        uploadInventoryProgress.querySelector('.progress-bar').style.width = '100%';
+                                        if (uploadInventoryText) uploadInventoryText.textContent = '100%';
+                                        
+                                        // Hide progress after a delay
+                                        setTimeout(() => {
+                                            uploadInventoryProgress.style.display = 'none';
+                                        }, 1000);
+                                    }
+                                    
                                     showToast('Data inventory berhasil diupload dari Excel!');
                                 } catch (err) {
                                     console.error('Error parsing Excel:', err);
                                     showToast('Error parsing file Excel: ' + err.message, 'error');
+                                    
+                                    // Hide progress on error
+                                    if (uploadInventoryProgress) {
+                                        uploadInventoryProgress.style.display = 'none';
+                                    }
                                 }
                             };
                             reader.readAsArrayBuffer(file);
