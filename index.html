@@ -2619,6 +2619,717 @@
         }
         
         document.addEventListener('DOMContentLoaded', function() {
+            // ==============================
+// IMPLEMENTASI FUNGSI UPLOAD, DOWNLOAD, HAPUS, TAMBAH DATA
+// ==============================
+
+// Fungsi untuk upload data Master Location dari Excel
+function setupMasterLocationUpload() {
+    const uploadBtn = document.getElementById('upload-master-location-btn');
+    const fileInput = document.getElementById('master-location-file-input');
+    const progressContainer = document.getElementById('upload-master-location-progress');
+    const progressBar = progressContainer.querySelector('.progress-bar');
+    const progressText = document.getElementById('upload-master-location-text');
+
+    if (!uploadBtn || !fileInput) return;
+
+    uploadBtn.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!file.name.match(/\.(xlsx|xls)$/)) {
+            showToast('Harap pilih file Excel (.xlsx atau .xls)', 'error');
+            return;
+        }
+
+        try {
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+
+            const data = await readExcelFile(file, progressBar, progressText);
+            
+            // Validasi data
+            if (!Array.isArray(data) || data.length === 0) {
+                throw new Error('Data Excel tidak valid atau kosong');
+            }
+
+            // Validasi kolom required
+            const requiredColumns = ['Validation Code', 'Location'];
+            const firstRow = data[0];
+            const hasRequiredColumns = requiredColumns.every(col => firstRow.hasOwnProperty(col));
+            
+            if (!hasRequiredColumns) {
+                throw new Error(`File Excel harus memiliki kolom: ${requiredColumns.join(', ')}`);
+            }
+
+            // Transform data
+            const transformedData = data.map(row => ({
+                validationCode: row['Validation Code'],
+                location: row['Location']
+            }));
+
+            // Simpan data
+            await storageManager.saveMasterLocation(transformedData);
+            
+            progressBar.style.width = '100%';
+            progressText.textContent = '100%';
+            
+            showToast(`Berhasil mengupload ${transformedData.length} data master lokasi`);
+            await renderMasterLocationData();
+            
+            // Reset file input
+            fileInput.value = '';
+            
+            // Sembunyikan progress bar setelah beberapa detik
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Error uploading master location:', error);
+            showToast('Error mengupload data: ' + error.message, 'error');
+            progressContainer.style.display = 'none';
+        }
+    });
+}
+
+// Fungsi untuk download data Master Location ke Excel
+function setupMasterLocationDownload() {
+    const downloadBtn = document.getElementById('download-master-location-btn');
+    
+    if (!downloadBtn) return;
+    
+    downloadBtn.addEventListener('click', async function() {
+        try {
+            const data = await storageManager.getMasterLocation();
+            
+            if (data.length === 0) {
+                showToast('Tidak ada data master lokasi untuk didownload', 'info');
+                return;
+            }
+            
+            // Transform data untuk Excel
+            const excelData = data.map(item => ({
+                'Validation Code': item.validationCode,
+                'Location': item.location
+            }));
+            
+            // Buat worksheet
+            const ws = XLSX.utils.json_to_sheet(excelData);
+            
+            // Buat workbook
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Master Location');
+            
+            // Download file
+            XLSX.writeFile(wb, `master_location_${new Date().toISOString().split('T')[0]}.xlsx`);
+            
+            showToast(`Berhasil mendownload ${data.length} data master lokasi`);
+        } catch (error) {
+            console.error('Error downloading master location:', error);
+            showToast('Error mendownload data: ' + error.message, 'error');
+        }
+    });
+}
+
+// Fungsi untuk hapus semua data Master Location
+function setupMasterLocationClear() {
+    const clearBtn = document.getElementById('clear-master-location-btn');
+    
+    if (!clearBtn) return;
+    
+    clearBtn.addEventListener('click', async function() {
+        if (!confirm('Apakah Anda yakin ingin menghapus SEMUA data master lokasi? Tindakan ini tidak dapat dibatalkan!')) {
+            return;
+        }
+        
+        try {
+            // Hapus dari IndexedDB
+            if (storageManager.settings.enableIndexedDB && storageManager.db) {
+                const tx = storageManager.db.transaction(['masterLocation'], 'readwrite');
+                const store = tx.objectStore('masterLocation');
+                await store.clear();
+            }
+            
+            // Hapus dari localStorage
+            if (storageManager.settings.enableLocalStorage) {
+                localStorage.removeItem(`masterLocationData_${userKey}`);
+            }
+            
+            await renderMasterLocationData();
+            showToast('Semua data master lokasi berhasil dihapus');
+        } catch (error) {
+            console.error('Error clearing master location:', error);
+            showToast('Error menghapus data: ' + error.message, 'error');
+        }
+    });
+}
+
+// Fungsi untuk tambah data Master Location
+function setupMasterLocationAdd() {
+    const addBtn = document.getElementById('add-master-location-btn');
+    const saveBtn = document.getElementById('saveMasterLocationBtn');
+    const modal = new bootstrap.Modal(document.getElementById('addMasterLocationModal'));
+    
+    if (!addBtn || !saveBtn) return;
+    
+    addBtn.addEventListener('click', function() {
+        document.getElementById('addMasterLocationForm').reset();
+        modal.show();
+    });
+    
+    saveBtn.addEventListener('click', async function() {
+        const validationCode = document.getElementById('addValidationCode').value.trim();
+        const location = document.getElementById('addLocation').value.trim();
+        
+        if (!validationCode || !location) {
+            showToast('Harap isi semua field yang diperlukan', 'error');
+            return;
+        }
+        
+        try {
+            const newData = {
+                validationCode: validationCode,
+                location: location
+            };
+            
+            await storageManager.saveMasterLocation(newData);
+            await renderMasterLocationData();
+            modal.hide();
+            showToast('Data master lokasi berhasil ditambahkan');
+        } catch (error) {
+            console.error('Error adding master location:', error);
+            showToast('Error menambahkan data: ' + error.message, 'error');
+        }
+    });
+}
+
+// Fungsi untuk membaca file Excel
+function readExcelFile(file, progressBar, progressText) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                
+                // Ambil sheet pertama
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                
+                // Konversi ke JSON
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                
+                // Update progress
+                if (progressBar && progressText) {
+                    progressBar.style.width = '100%';
+                    progressText.textContent = '100%';
+                }
+                
+                resolve(jsonData);
+            } catch (error) {
+                reject(error);
+            }
+        };
+        
+        reader.onerror = function() {
+            reject(new Error('Gagal membaca file'));
+        };
+        
+        // Simulasi progress (karena FileReader tidak memiliki progress event untuk XLSX)
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            if (progress < 90) {
+                progress += 10;
+                if (progressBar && progressText) {
+                    progressBar.style.width = `${progress}%`;
+                    progressText.textContent = `${progress}%`;
+                }
+            }
+        }, 100);
+        
+        reader.onloadend = function() {
+            clearInterval(progressInterval);
+        };
+        
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+// Setup serupa untuk Master EAN
+function setupMasterEanUpload() {
+    const uploadBtn = document.getElementById('upload-master-ean-btn');
+    const fileInput = document.getElementById('master-ean-file-input');
+    const progressContainer = document.getElementById('upload-master-ean-progress');
+    const progressBar = progressContainer.querySelector('.progress-bar');
+    const progressText = document.getElementById('upload-master-ean-text');
+
+    if (!uploadBtn || !fileInput) return;
+
+    uploadBtn.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!file.name.match(/\.(xlsx|xls)$/)) {
+            showToast('Harap pilih file Excel (.xlsx atau .xls)', 'error');
+            return;
+        }
+
+        try {
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+
+            const data = await readExcelFile(file, progressBar, progressText);
+            
+            if (!Array.isArray(data) || data.length === 0) {
+                throw new Error('Data Excel tidak valid atau kosong');
+            }
+
+            const requiredColumns = ['EAN', 'SKU'];
+            const firstRow = data[0];
+            const hasRequiredColumns = requiredColumns.every(col => firstRow.hasOwnProperty(col));
+            
+            if (!hasRequiredColumns) {
+                throw new Error(`File Excel harus memiliki kolom: ${requiredColumns.join(', ')}`);
+            }
+
+            const transformedData = data.map(row => ({
+                ean: row['EAN'],
+                sku: row['SKU']
+            }));
+
+            await storageManager.saveMasterEan(transformedData);
+            
+            progressBar.style.width = '100%';
+            progressText.textContent = '100%';
+            
+            showToast(`Berhasil mengupload ${transformedData.length} data master EAN`);
+            await renderMasterEanData();
+            
+            fileInput.value = '';
+            
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Error uploading master EAN:', error);
+            showToast('Error mengupload data: ' + error.message, 'error');
+            progressContainer.style.display = 'none';
+        }
+    });
+}
+
+function setupMasterEanDownload() {
+    const downloadBtn = document.getElementById('download-master-ean-btn');
+    
+    if (!downloadBtn) return;
+    
+    downloadBtn.addEventListener('click', async function() {
+        try {
+            const data = await storageManager.getMasterEan();
+            
+            if (data.length === 0) {
+                showToast('Tidak ada data master EAN untuk didownload', 'info');
+                return;
+            }
+            
+            const excelData = data.map(item => ({
+                'EAN': item.ean,
+                'SKU': item.sku
+            }));
+            
+            const ws = XLSX.utils.json_to_sheet(excelData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Master EAN');
+            
+            XLSX.writeFile(wb, `master_ean_${new Date().toISOString().split('T')[0]}.xlsx`);
+            
+            showToast(`Berhasil mendownload ${data.length} data master EAN`);
+        } catch (error) {
+            console.error('Error downloading master EAN:', error);
+            showToast('Error mendownload data: ' + error.message, 'error');
+        }
+    });
+}
+
+function setupMasterEanClear() {
+    const clearBtn = document.getElementById('clear-master-ean-btn');
+    
+    if (!clearBtn) return;
+    
+    clearBtn.addEventListener('click', async function() {
+        if (!confirm('Apakah Anda yakin ingin menghapus SEMUA data master EAN? Tindakan ini tidak dapat dibatalkan!')) {
+            return;
+        }
+        
+        try {
+            if (storageManager.settings.enableIndexedDB && storageManager.db) {
+                const tx = storageManager.db.transaction(['masterEan'], 'readwrite');
+                const store = tx.objectStore('masterEan');
+                await store.clear();
+            }
+            
+            if (storageManager.settings.enableLocalStorage) {
+                localStorage.removeItem(`masterEanData_${userKey}`);
+            }
+            
+            await renderMasterEanData();
+            showToast('Semua data master EAN berhasil dihapus');
+        } catch (error) {
+            console.error('Error clearing master EAN:', error);
+            showToast('Error menghapus data: ' + error.message, 'error');
+        }
+    });
+}
+
+function setupMasterEanAdd() {
+    const addBtn = document.getElementById('add-master-ean-btn');
+    const saveBtn = document.getElementById('saveMasterEanBtn');
+    const modal = new bootstrap.Modal(document.getElementById('addMasterEanModal'));
+    
+    if (!addBtn || !saveBtn) return;
+    
+    addBtn.addEventListener('click', function() {
+        document.getElementById('addMasterEanForm').reset();
+        modal.show();
+    });
+    
+    saveBtn.addEventListener('click', async function() {
+        const ean = document.getElementById('addEan').value.trim();
+        const sku = document.getElementById('addSku').value.trim();
+        
+        if (!ean || !sku) {
+            showToast('Harap isi semua field yang diperlukan', 'error');
+            return;
+        }
+        
+        try {
+            const newData = {
+                ean: ean,
+                sku: sku
+            };
+            
+            await storageManager.saveMasterEan(newData);
+            await renderMasterEanData();
+            modal.hide();
+            showToast('Data master EAN berhasil ditambahkan');
+        } catch (error) {
+            console.error('Error adding master EAN:', error);
+            showToast('Error menambahkan data: ' + error.message, 'error');
+        }
+    });
+}
+
+// Setup serupa untuk Inventory
+function setupInventoryUpload() {
+    const uploadBtn = document.getElementById('upload-inventory-btn');
+    const fileInput = document.getElementById('inventory-file-input');
+    const progressContainer = document.getElementById('upload-inventory-progress');
+    const progressBar = progressContainer.querySelector('.progress-bar');
+    const progressText = document.getElementById('upload-inventory-text');
+
+    if (!uploadBtn || !fileInput) return;
+
+    uploadBtn.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!file.name.match(/\.(xlsx|xls)$/)) {
+            showToast('Harap pilih file Excel (.xlsx atau .xls)', 'error');
+            return;
+        }
+
+        try {
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+
+            const data = await readExcelFile(file, progressBar, progressText);
+            
+            if (!Array.isArray(data) || data.length === 0) {
+                throw new Error('Data Excel tidak valid atau kosong');
+            }
+
+            const requiredColumns = ['Location ID', 'SKU'];
+            const firstRow = data[0];
+            const hasRequiredColumns = requiredColumns.every(col => firstRow.hasOwnProperty(col));
+            
+            if (!hasRequiredColumns) {
+                throw new Error(`File Excel harus memiliki kolom: ${requiredColumns.join(', ')}`);
+            }
+
+            const transformedData = data.map(row => ({
+                locationId: row['Location ID'],
+                sku: row['SKU'],
+                skuDescrL: row['SKU Descr(L)'] || '',
+                traceId: row['Trace ID'] || '',
+                qtyOnHand: row['QTY On Hand'] || 0
+            }));
+
+            await storageManager.saveInventory(transformedData);
+            
+            progressBar.style.width = '100%';
+            progressText.textContent = '100%';
+            
+            showToast(`Berhasil mengupload ${transformedData.length} data inventory`);
+            await renderInventoryData();
+            
+            fileInput.value = '';
+            
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Error uploading inventory:', error);
+            showToast('Error mengupload data: ' + error.message, 'error');
+            progressContainer.style.display = 'none';
+        }
+    });
+}
+
+function setupInventoryDownload() {
+    const downloadBtn = document.getElementById('download-inventory-btn');
+    
+    if (!downloadBtn) return;
+    
+    downloadBtn.addEventListener('click', async function() {
+        try {
+            const data = await storageManager.getInventory();
+            
+            if (data.length === 0) {
+                showToast('Tidak ada data inventory untuk didownload', 'info');
+                return;
+            }
+            
+            const excelData = data.map(item => ({
+                'Location ID': item.locationId,
+                'SKU': item.sku,
+                'SKU Descr(L)': item.skuDescrL,
+                'Trace ID': item.traceId,
+                'QTY On Hand': item.qtyOnHand
+            }));
+            
+            const ws = XLSX.utils.json_to_sheet(excelData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
+            
+            XLSX.writeFile(wb, `inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
+            
+            showToast(`Berhasil mendownload ${data.length} data inventory`);
+        } catch (error) {
+            console.error('Error downloading inventory:', error);
+            showToast('Error mendownload data: ' + error.message, 'error');
+        }
+    });
+}
+
+function setupInventoryClear() {
+    const clearBtn = document.getElementById('clear-inventory-btn');
+    
+    if (!clearBtn) return;
+    
+    clearBtn.addEventListener('click', async function() {
+        if (!confirm('Apakah Anda yakin ingin menghapus SEMUA data inventory? Tindakan ini tidak dapat dibatalkan!')) {
+            return;
+        }
+        
+        try {
+            if (storageManager.settings.enableIndexedDB && storageManager.db) {
+                const tx = storageManager.db.transaction(['inventory'], 'readwrite');
+                const store = tx.objectStore('inventory');
+                await store.clear();
+            }
+            
+            if (storageManager.settings.enableLocalStorage) {
+                localStorage.removeItem(`inventoryData_${userKey}`);
+            }
+            
+            await renderInventoryData();
+            showToast('Semua data inventory berhasil dihapus');
+        } catch (error) {
+            console.error('Error clearing inventory:', error);
+            showToast('Error menghapus data: ' + error.message, 'error');
+        }
+    });
+}
+
+function setupInventoryAdd() {
+    const addBtn = document.getElementById('add-inventory-btn');
+    const saveBtn = document.getElementById('saveInventoryBtn');
+    const modal = new bootstrap.Modal(document.getElementById('addInventoryModal'));
+    
+    if (!addBtn || !saveBtn) return;
+    
+    addBtn.addEventListener('click', function() {
+        document.getElementById('addInventoryForm').reset();
+        modal.show();
+    });
+    
+    saveBtn.addEventListener('click', async function() {
+        const locationId = document.getElementById('addLocationId').value.trim();
+        const sku = document.getElementById('addSkuInventory').value.trim();
+        const skuDescrL = document.getElementById('addSkuDescrL').value.trim();
+        const traceId = document.getElementById('addTraceId').value.trim();
+        const qtyOnHand = document.getElementById('addQtyOnHand').value.trim();
+        
+        if (!locationId || !sku) {
+            showToast('Harap isi Location ID dan SKU', 'error');
+            return;
+        }
+        
+        try {
+            const newData = {
+                locationId: locationId,
+                sku: sku,
+                skuDescrL: skuDescrL,
+                traceId: traceId,
+                qtyOnHand: qtyOnHand ? parseInt(qtyOnHand) : 0
+            };
+            
+            await storageManager.saveInventory(newData);
+            await renderInventoryData();
+            modal.hide();
+            showToast('Data inventory berhasil ditambahkan');
+        } catch (error) {
+            console.error('Error adding inventory:', error);
+            showToast('Error menambahkan data: ' + error.message, 'error');
+        }
+    });
+}
+
+// Panggil setup functions dalam initApp
+async function initApp() {
+    try {
+        // ... kode yang sudah ada ...
+        
+        // Setup fungsi upload, download, hapus, tambah untuk semua tab
+        setupMasterLocationUpload();
+        setupMasterLocationDownload();
+        setupMasterLocationClear();
+        setupMasterLocationAdd();
+        
+        setupMasterEanUpload();
+        setupMasterEanDownload();
+        setupMasterEanClear();
+        setupMasterEanAdd();
+        
+        setupInventoryUpload();
+        setupInventoryDownload();
+        setupInventoryClear();
+        setupInventoryAdd();
+        
+        // ... kode yang sudah ada ...
+        
+    } catch (error) {
+        console.error('Error in initApp:', error);
+        showToast('Terjadi kesalahan dalam inisialisasi aplikasi: ' + error.message, 'error');
+    }
+}
+            // Fungsi untuk hapus data count terpilih
+function setupDeleteSelectedDataCount() {
+    const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+    
+    if (!deleteSelectedBtn) return;
+    
+    deleteSelectedBtn.addEventListener('click', async function() {
+        const selectedCheckboxes = document.querySelectorAll('.data-checkbox:checked');
+        
+        if (selectedCheckboxes.length === 0) {
+            showToast('Tidak ada data yang dipilih untuk dihapus', 'info');
+            return;
+        }
+        
+        if (!confirm(`Apakah Anda yakin ingin menghapus ${selectedCheckboxes.length} data terpilih?`)) {
+            return;
+        }
+        
+        try {
+            const idsToDelete = Array.from(selectedCheckboxes).map(checkbox => 
+                checkbox.getAttribute('data-id')
+            );
+            
+            await storageManager.deleteMultipleCycleCount(idsToDelete);
+            await renderDataCountTable();
+            showToast(`${idsToDelete.length} data berhasil dihapus`);
+        } catch (error) {
+            console.error('Error deleting selected data count:', error);
+            showToast('Error menghapus data: ' + error.message, 'error');
+        }
+    });
+}
+
+// Panggil dalam initApp
+setupDeleteSelectedDataCount();
+            // Fungsi untuk export data count ke Excel
+function setupExportDataCount() {
+    const exportBtn = document.getElementById('export-btn');
+    
+    if (!exportBtn) return;
+    
+    exportBtn.addEventListener('click', async function() {
+        try {
+            const startDateFilter = document.getElementById('start-date');
+            const endDateFilter = document.getElementById('end-date');
+            
+            const startDate = startDateFilter && startDateFilter.value ? new Date(startDateFilter.value) : new Date(0);
+            const endDate = endDateFilter && endDateFilter.value ? new Date(endDateFilter.value) : new Date();
+            endDate.setHours(23, 59, 59, 999);
+            
+            const data = await storageManager.getCycleCount(startDate, endDate);
+            
+            if (data.length === 0) {
+                showToast('Tidak ada data untuk diexport', 'info');
+                return;
+            }
+            
+            const excelData = data.map(item => {
+                const date = new Date(item.timestamp);
+                const formattedDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                
+                return {
+                    'Tanggal': formattedDate,
+                    'Lokasi': item.location,
+                    'EAN': item.ean,
+                    'SKU': item.sku,
+                    'Count Type': item.countType,
+                    'Qty': item.qty,
+                    'Remark': item.remark || ''
+                };
+            });
+            
+            const ws = XLSX.utils.json_to_sheet(excelData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Cycle Count Data');
+            
+            XLSX.writeFile(wb, `cycle_count_data_${new Date().toISOString().split('T')[0]}.xlsx`);
+            
+            showToast(`Berhasil mengexport ${data.length} data cycle count`);
+        } catch (error) {
+            console.error('Error exporting data count:', error);
+            showToast('Error mengexport data: ' + error.message, 'error');
+        }
+    });
+}
+
+// Panggil dalam initApp
+setupExportDataCount();
             // Login functionality
             const loginContainer = document.getElementById('login-container');
             const appContainer = document.getElementById('app-container');
@@ -3261,5 +3972,100 @@
             }
         });
     </script>
+    <!-- Modal untuk Tambah Data Master Location -->
+<div class="modal fade" id="addMasterLocationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Tambah Data Master Location</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addMasterLocationForm">
+                    <div class="mb-3">
+                        <label for="addValidationCode" class="form-label">Validation Code</label>
+                        <input type="text" class="form-control" id="addValidationCode" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addLocation" class="form-label">Location</label>
+                        <input type="text" class="form-control" id="addLocation" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-primary" id="saveMasterLocationBtn">Simpan</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal untuk Tambah Data Master EAN -->
+<div class="modal fade" id="addMasterEanModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Tambah Data Master EAN</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addMasterEanForm">
+                    <div class="mb-3">
+                        <label for="addEan" class="form-label">EAN</label>
+                        <input type="text" class="form-control" id="addEan" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addSku" class="form-label">SKU</label>
+                        <input type="text" class="form-control" id="addSku" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-primary" id="saveMasterEanBtn">Simpan</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal untuk Tambah Data Inventory -->
+<div class="modal fade" id="addInventoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Tambah Data Inventory</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addInventoryForm">
+                    <div class="mb-3">
+                        <label for="addLocationId" class="form-label">Location ID</label>
+                        <input type="text" class="form-control" id="addLocationId" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addSkuInventory" class="form-label">SKU</label>
+                        <input type="text" class="form-control" id="addSkuInventory" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addSkuDescrL" class="form-label">SKU Description</label>
+                        <input type="text" class="form-control" id="addSkuDescrL">
+                    </div>
+                    <div class="mb-3">
+                        <label for="addTraceId" class="form-label">Trace ID</label>
+                        <input type="text" class="form-control" id="addTraceId">
+                    </div>
+                    <div class="mb-3">
+                        <label for="addQtyOnHand" class="form-label">QTY On Hand</label>
+                        <input type="number" class="form-control" id="addQtyOnHand">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-primary" id="saveInventoryBtn">Simpan</button>
+            </div>
+        </div>
+    </div>
+</div>
 </body>
 </html>
