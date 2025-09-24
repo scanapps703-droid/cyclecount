@@ -1325,7 +1325,7 @@
             constructor(userKey) {
                 this.userKey = userKey;
                 this.dbName = `CycleCountDB_${userKey}`;
-                this.dbVersion = 2; // Increased version for new structure
+                this.dbVersion = 2;
                 this.db = null;
                 this.settings = {
                     enableIndexedDB: true,
@@ -1336,7 +1336,6 @@
                 this.loadSettings();
             }
             
-            // Load settings from localStorage
             loadSettings() {
                 const savedSettings = localStorage.getItem(`storageSettings_${this.userKey}`);
                 if (savedSettings) {
@@ -1344,12 +1343,10 @@
                 }
             }
             
-            // Save settings to localStorage
             saveSettings() {
                 localStorage.setItem(`storageSettings_${this.userKey}`, JSON.stringify(this.settings));
             }
             
-            // Inisialisasi IndexedDB
             async initDB() {
                 if (!this.settings.enableIndexedDB) {
                     console.log('IndexedDB disabled by settings');
@@ -1373,7 +1370,6 @@
                     request.onupgradeneeded = (event) => {
                         const db = event.target.result;
                         
-                        // Buat object store untuk setiap tipe data
                         if (!db.objectStoreNames.contains('cycleCount')) {
                             const cycleCountStore = db.createObjectStore('cycleCount', { keyPath: 'id', autoIncrement: true });
                             cycleCountStore.createIndex('timestamp', 'timestamp', { unique: false });
@@ -1406,18 +1402,16 @@
             }
             
             // ==============================
-            // METODE UNTUK CYCLE COUNT DATA
+            // CYCLE COUNT DATA METHODS
             // ==============================
             
             async saveCycleCount(data) {
-                // Generate unique ID if not present
                 if (!data.id) {
                     data.id = Date.now() + Math.random().toString(36).substr(2, 9);
                 }
                 
                 data.timestamp = data.timestamp || new Date().toISOString();
                 
-                // Save to IndexedDB if enabled
                 if (this.settings.enableIndexedDB && this.db) {
                     try {
                         const tx = this.db.transaction(['cycleCount'], 'readwrite');
@@ -1428,19 +1422,15 @@
                     }
                 }
                 
-                // Save to localStorage if enabled
                 if (this.settings.enableLocalStorage) {
                     try {
                         let localStorageData = JSON.parse(localStorage.getItem(`cycleCountData_${this.userKey}`)) || [];
-                        
-                        // Check if item already exists
                         const existingIndex = localStorageData.findIndex(item => item.id === data.id);
                         if (existingIndex !== -1) {
                             localStorageData[existingIndex] = data;
                         } else {
                             localStorageData.push(data);
                         }
-                        
                         localStorage.setItem(`cycleCountData_${this.userKey}`, JSON.stringify(localStorageData));
                     } catch (error) {
                         console.error('Error saving to localStorage:', error);
@@ -1451,7 +1441,6 @@
             }
             
             async getCycleCount(startDate = null, endDate = null) {
-                // Try IndexedDB first if enabled
                 if (this.settings.enableIndexedDB && this.db) {
                     try {
                         const tx = this.db.transaction(['cycleCount'], 'readonly');
@@ -1472,7 +1461,6 @@
                             request.onerror = () => reject(request.error);
                         });
                         
-                        // Sort by timestamp descending
                         data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                         return data;
                     } catch (error) {
@@ -1480,12 +1468,10 @@
                     }
                 }
                 
-                // Fallback to localStorage
                 if (this.settings.enableLocalStorage) {
                     try {
                         let data = JSON.parse(localStorage.getItem(`cycleCountData_${this.userKey}`)) || [];
                         
-                        // Filter by date if needed
                         if (startDate && endDate) {
                             data = data.filter(item => {
                                 const itemDate = new Date(item.timestamp);
@@ -1493,7 +1479,6 @@
                             });
                         }
                         
-                        // Sort by timestamp descending
                         data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                         return data;
                     } catch (error) {
@@ -1505,7 +1490,6 @@
             }
             
             async deleteCycleCount(id) {
-                // Delete from IndexedDB if enabled
                 if (this.settings.enableIndexedDB && this.db) {
                     try {
                         const tx = this.db.transaction(['cycleCount'], 'readwrite');
@@ -1516,7 +1500,6 @@
                     }
                 }
                 
-                // Delete from localStorage if enabled
                 if (this.settings.enableLocalStorage) {
                     try {
                         let localStorageData = JSON.parse(localStorage.getItem(`cycleCountData_${this.userKey}`)) || [];
@@ -1529,7 +1512,6 @@
             }
             
             async deleteMultipleCycleCount(ids) {
-                // Delete from IndexedDB if enabled
                 if (this.settings.enableIndexedDB && this.db) {
                     try {
                         const tx = this.db.transaction(['cycleCount'], 'readwrite');
@@ -1543,7 +1525,6 @@
                     }
                 }
                 
-                // Delete from localStorage if enabled
                 if (this.settings.enableLocalStorage) {
                     try {
                         let localStorageData = JSON.parse(localStorage.getItem(`cycleCountData_${this.userKey}`)) || [];
@@ -1556,14 +1537,12 @@
             }
             
             // ==============================
-            // METODE UNTUK MASTER DATA
+            // MASTER DATA METHODS
             // ==============================
             
             async saveMasterLocation(data) {
-                // Ensure data is an array
                 const dataArray = Array.isArray(data) ? data : [data];
                 
-                // Save to IndexedDB if enabled
                 if (this.settings.enableIndexedDB && this.db) {
                     try {
                         const tx = this.db.transaction(['masterLocation'], 'readwrite');
@@ -1577,14 +1556,11 @@
                     }
                 }
                 
-                // Save to localStorage if enabled
                 if (this.settings.enableLocalStorage) {
                     try {
                         if (Array.isArray(data)) {
-                            // Replace all data
                             localStorage.setItem(`masterLocationData_${this.userKey}`, JSON.stringify(data));
                         } else {
-                            // Add or update single item
                             let localStorageData = JSON.parse(localStorage.getItem(`masterLocationData_${this.userKey}`)) || [];
                             const existingIndex = localStorageData.findIndex(item => item.validationCode === data.validationCode);
                             
@@ -1605,7 +1581,6 @@
             }
             
             async getMasterLocation() {
-                // Try IndexedDB first if enabled
                 if (this.settings.enableIndexedDB && this.db) {
                     try {
                         const tx = this.db.transaction(['masterLocation'], 'readonly');
@@ -1623,13 +1598,12 @@
                     }
                 }
                 
-                // Fallback to localStorage
                 if (this.settings.enableLocalStorage) {
                     try {
                         return JSON.parse(localStorage.getItem(`masterLocationData_${this.userKey}`)) || [];
                     } catch (error) {
                         console.error('Error reading master location from localStorage:', error);
-                    return [];
+                        return [];
                     }
                 }
                 
@@ -1637,7 +1611,6 @@
             }
             
             async deleteMasterLocation(validationCode) {
-                // Delete from IndexedDB if enabled
                 if (this.settings.enableIndexedDB && this.db) {
                     try {
                         const tx = this.db.transaction(['masterLocation'], 'readwrite');
@@ -1648,7 +1621,6 @@
                     }
                 }
                 
-                // Delete from localStorage if enabled
                 if (this.settings.enableLocalStorage) {
                     try {
                         let localStorageData = JSON.parse(localStorage.getItem(`masterLocationData_${this.userKey}`)) || [];
@@ -1659,9 +1631,6 @@
                     }
                 }
             }
-            
-            // Similar methods for masterEan and inventory...
-            // (Untuk menghemat ruang, saya akan singkatkan implementasinya)
             
             async saveMasterEan(data) {
                 const dataArray = Array.isArray(data) ? data : [data];
@@ -1756,7 +1725,7 @@
             }
             
             // ==============================
-            // METODE UNTUK INVENTORY DATA
+            // INVENTORY DATA METHODS
             // ==============================
             
             async saveInventory(data) {
@@ -1767,13 +1736,11 @@
                         const tx = this.db.transaction(['inventory'], 'readwrite');
                         const store = tx.objectStore('inventory');
                         
-                        // Clear existing data if replacing all
                         if (Array.isArray(data)) {
                             await store.clear();
                         }
                         
                         for (const item of dataArray) {
-                            // Generate ID if not present
                             if (!item.id) {
                                 item.id = Date.now() + Math.random().toString(36).substr(2, 9);
                             }
@@ -1895,7 +1862,7 @@
             }
             
             // ==============================
-            // METODE UNTUK SYNC DENGAN GITHUB
+            // GITHUB SYNC METHODS
             // ==============================
             
             async exportAllData() {
@@ -1937,7 +1904,7 @@
             }
             
             // ==============================
-            // METODE UNTUK STATISTIK
+            // STATISTICS METHODS
             // ==============================
             
             async getStorageStats() {
@@ -1948,7 +1915,6 @@
                     inventory: { indexedDB: 0, localStorage: 0 }
                 };
                 
-                // Get IndexedDB stats if enabled
                 if (this.settings.enableIndexedDB && this.db) {
                     try {
                         const objectStores = [
@@ -1973,7 +1939,6 @@
                     }
                 }
                 
-                // Get localStorage stats
                 if (this.settings.enableLocalStorage) {
                     try {
                         const cycleCountData = JSON.parse(localStorage.getItem(`cycleCountData_${this.userKey}`)) || [];
@@ -1996,11 +1961,10 @@
             }
             
             // ==============================
-            // METODE UNTUK CLEANUP
+            // CLEANUP METHODS
             // ==============================
             
             async clearAllData() {
-                // Clear IndexedDB if enabled
                 if (this.settings.enableIndexedDB && this.db) {
                     try {
                         const objectStores = ['cycleCount', 'masterLocation', 'masterEan', 'inventory'];
@@ -2015,7 +1979,6 @@
                     }
                 }
                 
-                // Clear localStorage if enabled
                 if (this.settings.enableLocalStorage) {
                     try {
                         localStorage.removeItem(`cycleCountData_${this.userKey}`);
@@ -2055,16 +2018,14 @@
         }
 
         // ==============================
-        // INTEGRASI DENGAN APLIKASI UTAMA
+        // MAIN APPLICATION INTEGRATION
         // ==============================
         
-        // Variabel global untuk menyimpan state aplikasi
         let currentUser = null;
         let userKey = null;
         let storageManager = null;
         let autoSyncInterval = null;
         
-        // Fungsi untuk menampilkan notifikasi toast
         function showToast(message, type = 'success') {
             const toastContainer = document.getElementById('toast-container');
             if (!toastContainer) return;
@@ -2078,7 +2039,6 @@
             
             toastContainer.appendChild(toast);
             
-            // Remove toast after 3 seconds
             setTimeout(() => {
                 if (toast.parentElement) {
                     toast.remove();
@@ -2086,16 +2046,13 @@
             }, 3000);
         }
         
-        // Fungsi untuk menguji koneksi GitHub
         async function testGithubConnection(config = null) {
-            // Jika config tidak diberikan, maka membaca dari input
             if (config === null) {
                 const githubTokenEl = document.getElementById('github-token');
                 const githubOwnerEl = document.getElementById('github-owner');
                 const githubRepoEl = document.getElementById('github-repo');
                 
                 if (!githubTokenEl || !githubOwnerEl || !githubRepoEl) {
-                    // Elemen tidak ditemukan, mungkin tab belum aktif
                     console.error('Element konfigurasi GitHub tidak ditemukan');
                     return false;
                 }
@@ -2167,7 +2124,6 @@
             }
         }
         
-        // Function to load GitHub configuration
         function loadGithubConfig() {
             const githubToken = document.getElementById('github-token');
             const githubOwner = document.getElementById('github-owner');
@@ -2187,15 +2143,12 @@
             syncInterval.value = config.syncInterval || 5;
             autoSyncEnabled.checked = config.autoSyncEnabled || false;
             
-            // Test connection when loading config
             testGithubConnection();
             
-            // Start auto sync if enabled
             if (config.autoSyncEnabled) {
                 startAutoSync(config.syncInterval || 5);
             }
             
-            // Pasang event listener untuk save button
             saveGithubConfigBtn.addEventListener('click', function() {
                 const config = {
                     token: githubToken.value,
@@ -2209,10 +2162,8 @@
                 localStorage.setItem(`githubConfig_${userKey}`, JSON.stringify(config));
                 showToast('Konfigurasi GitHub berhasil disimpan!');
                 
-                // Test connection after saving - dengan parameter config
                 testGithubConnection(config);
                 
-                // Start auto sync if enabled
                 if (autoSyncInterval) {
                     clearInterval(autoSyncInterval);
                     autoSyncInterval = null;
@@ -2224,7 +2175,6 @@
             });
         }
         
-        // Fungsi untuk render data count table
         async function renderDataCountTable() {
             const dataCountTable = document.getElementById('data-count-table') ? document.getElementById('data-count-table').querySelector('tbody') : null;
             const startDateFilter = document.getElementById('start-date');
@@ -2232,9 +2182,9 @@
             
             if (!dataCountTable || !storageManager) return;
             
-            const startDate = startDateFilter && startDateFilter.value ? new Date(startDateFilter.value) : new Date(0); // Mulai dari epoch
+            const startDate = startDateFilter && startDateFilter.value ? new Date(startDateFilter.value) : new Date(0);
             const endDate = endDateFilter && endDateFilter.value ? new Date(endDateFilter.value) : new Date();
-            endDate.setHours(23, 59, 59, 999); // Set to end of day
+            endDate.setHours(23, 59, 59, 999);
             
             try {
                 const cycleCountData = await storageManager.getCycleCount(startDate, endDate);
@@ -2272,12 +2222,10 @@
                     dataCountTable.appendChild(row);
                 });
                 
-                // Add event listeners to checkboxes
                 document.querySelectorAll('.data-checkbox').forEach(checkbox => {
                     checkbox.addEventListener('change', updateSelectAllCheckbox);
                 });
                 
-                // Add event listeners to delete buttons
                 document.querySelectorAll('.delete-data-btn').forEach(btn => {
                     btn.addEventListener('click', async function() {
                         const id = this.getAttribute('data-id');
@@ -2290,7 +2238,6 @@
             }
         }
         
-        // Fungsi untuk render master location data
         async function renderMasterLocationData() {
             const masterLocationTable = document.getElementById('master-location-table') ? document.getElementById('master-location-table').querySelector('tbody') : null;
             
@@ -2322,7 +2269,6 @@
                     masterLocationTable.appendChild(row);
                 });
                 
-                // Add event listeners to delete buttons
                 document.querySelectorAll('.delete-master-location-btn').forEach(btn => {
                     btn.addEventListener('click', async function() {
                         const validationCode = this.getAttribute('data-validationcode');
@@ -2335,7 +2281,6 @@
             }
         }
         
-        // Fungsi untuk render master EAN data
         async function renderMasterEanData() {
             const masterEanTable = document.getElementById('master-ean-table') ? document.getElementById('master-ean-table').querySelector('tbody') : null;
             
@@ -2367,7 +2312,6 @@
                     masterEanTable.appendChild(row);
                 });
                 
-                // Add event listeners to delete buttons
                 document.querySelectorAll('.delete-master-ean-btn').forEach(btn => {
                     btn.addEventListener('click', async function() {
                         const ean = this.getAttribute('data-ean');
@@ -2380,7 +2324,6 @@
             }
         }
         
-        // Fungsi untuk render inventory data
         async function renderInventoryData() {
             const inventoryTable = document.getElementById('inventory-table') ? document.getElementById('inventory-table').querySelector('tbody') : null;
             
@@ -2415,7 +2358,6 @@
                     inventoryTable.appendChild(row);
                 });
                 
-                // Add event listeners to delete buttons
                 document.querySelectorAll('.delete-inventory-btn').forEach(btn => {
                     btn.addEventListener('click', async function() {
                         const id = this.getAttribute('data-id');
@@ -2428,7 +2370,6 @@
             }
         }
         
-        // Fungsi untuk menghapus data count item
         async function deleteDataCountItem(id) {
             if (!confirm('Apakah Anda yakin ingin menghapus data ini?')) {
                 return;
@@ -2444,7 +2385,6 @@
             }
         }
         
-        // Fungsi untuk menghapus master location item
         async function deleteMasterLocationItem(validationCode) {
             if (confirm('Apakah Anda yakin ingin menghapus data master lokasi ini?')) {
                 try {
@@ -2458,7 +2398,6 @@
             }
         }
         
-        // Fungsi untuk menghapus master EAN item
         async function deleteMasterEanItem(ean) {
             if (confirm('Apakah Anda yakin ingin menghapus data master EAN ini?')) {
                 try {
@@ -2472,7 +2411,6 @@
             }
         }
         
-        // Fungsi untuk menghapus inventory item
         async function deleteInventoryItem(id) {
             if (confirm('Apakah Anda yakin ingin menghapus data inventory ini?')) {
                 try {
@@ -2486,7 +2424,6 @@
             }
         }
         
-        // Fungsi untuk update select all checkbox
         function updateSelectAllCheckbox() {
             const allCheckboxes = document.querySelectorAll('.data-checkbox');
             const checkedCheckboxes = document.querySelectorAll('.data-checkbox:checked');
@@ -2497,7 +2434,6 @@
             }
         }
         
-        // Start auto sync
         function startAutoSync(intervalMinutes) {
             if (autoSyncInterval) {
                 clearInterval(autoSyncInterval);
@@ -2509,9 +2445,7 @@
             }, intervalMinutes * 60 * 1000);
         }
         
-        // Function to auto-sync data to GitHub
         async function autoSyncToGitHub() {
-            // Check if auto-sync is enabled
             const config = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
             if (!config.autoSyncEnabled || !storageManager.settings.enableGitHubSync) {
                 return;
@@ -2524,10 +2458,8 @@
             showToast('Memulai sinkronisasi otomatis...', 'info');
             
             try {
-                // Export all data
                 const allData = await storageManager.exportAllData();
                 
-                // Sync to GitHub
                 await syncDataWithGithub('cycle_count', allData.cycleCount);
                 await syncDataWithGithub('master_location', allData.masterLocation);
                 await syncDataWithGithub('master_ean', allData.masterEan);
@@ -2540,29 +2472,22 @@
             }
         }
         
-        // Fungsi untuk sync data dengan GitHub
         async function syncDataWithGithub(dataType, data) {
-            // Implementation for syncing with GitHub
-            // This would involve making API calls to GitHub to update files
-            // For brevity, I'll leave this as a placeholder
-            console.log(`Syncing ${dataType} with GitHub`, data);
-            
             // Simulate API call
             return new Promise((resolve) => {
                 setTimeout(() => {
+                    console.log(`Syncing ${dataType} with GitHub`, data);
                     resolve(true);
                 }, 1000);
             });
         }
         
-        // Fungsi untuk menampilkan status penyimpanan
         async function renderStorageStatus() {
             if (!storageManager) return;
             
             try {
                 const stats = await storageManager.getStorageStats();
                 
-                // Calculate totals
                 const indexedDBTotal = stats.cycleCount.indexedDB + stats.masterLocation.indexedDB + 
                                       stats.masterEan.indexedDB + stats.inventory.indexedDB;
                 
@@ -2571,7 +2496,6 @@
                 
                 const totalItems = indexedDBTotal + localStorageTotal;
                 
-                // Update progress bars
                 const indexedDBUsage = document.getElementById('indexeddb-usage');
                 const localStorageUsage = document.getElementById('localstorage-usage');
                 
@@ -2585,7 +2509,6 @@
                     localStorageUsage.style.width = `${percentage}%`;
                 }
                 
-                // Update stats text
                 const indexedDBStats = document.getElementById('indexeddb-stats');
                 const localStorageStats = document.getElementById('localstorage-stats');
                 
@@ -2597,7 +2520,6 @@
                     localStorageStats.textContent = `${localStorageTotal} items`;
                 }
                 
-                // Update settings checkboxes
                 const enableIndexedDB = document.getElementById('enable-indexeddb');
                 const enableLocalStorage = document.getElementById('enable-localstorage');
                 const enableGitHubSync = document.getElementById('enable-github-sync');
@@ -2618,718 +2540,525 @@
             }
         }
         
-        document.addEventListener('DOMContentLoaded', function() {
-            // ==============================
-// IMPLEMENTASI FUNGSI UPLOAD, DOWNLOAD, HAPUS, TAMBAH DATA
-// ==============================
-
-// Fungsi untuk upload data Master Location dari Excel
-function setupMasterLocationUpload() {
-    const uploadBtn = document.getElementById('upload-master-location-btn');
-    const fileInput = document.getElementById('master-location-file-input');
-    const progressContainer = document.getElementById('upload-master-location-progress');
-    const progressBar = progressContainer.querySelector('.progress-bar');
-    const progressText = document.getElementById('upload-master-location-text');
-
-    if (!uploadBtn || !fileInput) return;
-
-    uploadBtn.addEventListener('click', function() {
-        fileInput.click();
-    });
-
-    fileInput.addEventListener('change', async function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        if (!file.name.match(/\.(xlsx|xls)$/)) {
-            showToast('Harap pilih file Excel (.xlsx atau .xls)', 'error');
-            return;
-        }
-
-        try {
-            progressContainer.style.display = 'block';
-            progressBar.style.width = '0%';
-            progressText.textContent = '0%';
-
-            const data = await readExcelFile(file, progressBar, progressText);
-            
-            // Validasi data
-            if (!Array.isArray(data) || data.length === 0) {
-                throw new Error('Data Excel tidak valid atau kosong');
-            }
-
-            // Validasi kolom required
-            const requiredColumns = ['Validation Code', 'Location'];
-            const firstRow = data[0];
-            const hasRequiredColumns = requiredColumns.every(col => firstRow.hasOwnProperty(col));
-            
-            if (!hasRequiredColumns) {
-                throw new Error(`File Excel harus memiliki kolom: ${requiredColumns.join(', ')}`);
-            }
-
-            // Transform data
-            const transformedData = data.map(row => ({
-                validationCode: row['Validation Code'],
-                location: row['Location']
-            }));
-
-            // Simpan data
-            await storageManager.saveMasterLocation(transformedData);
-            
-            progressBar.style.width = '100%';
-            progressText.textContent = '100%';
-            
-            showToast(`Berhasil mengupload ${transformedData.length} data master lokasi`);
-            await renderMasterLocationData();
-            
-            // Reset file input
-            fileInput.value = '';
-            
-            // Sembunyikan progress bar setelah beberapa detik
-            setTimeout(() => {
-                progressContainer.style.display = 'none';
-            }, 2000);
-            
-        } catch (error) {
-            console.error('Error uploading master location:', error);
-            showToast('Error mengupload data: ' + error.message, 'error');
-            progressContainer.style.display = 'none';
-        }
-    });
-}
-
-// Fungsi untuk download data Master Location ke Excel
-function setupMasterLocationDownload() {
-    const downloadBtn = document.getElementById('download-master-location-btn');
-    
-    if (!downloadBtn) return;
-    
-    downloadBtn.addEventListener('click', async function() {
-        try {
-            const data = await storageManager.getMasterLocation();
-            
-            if (data.length === 0) {
-                showToast('Tidak ada data master lokasi untuk didownload', 'info');
-                return;
-            }
-            
-            // Transform data untuk Excel
-            const excelData = data.map(item => ({
-                'Validation Code': item.validationCode,
-                'Location': item.location
-            }));
-            
-            // Buat worksheet
-            const ws = XLSX.utils.json_to_sheet(excelData);
-            
-            // Buat workbook
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Master Location');
-            
-            // Download file
-            XLSX.writeFile(wb, `master_location_${new Date().toISOString().split('T')[0]}.xlsx`);
-            
-            showToast(`Berhasil mendownload ${data.length} data master lokasi`);
-        } catch (error) {
-            console.error('Error downloading master location:', error);
-            showToast('Error mendownload data: ' + error.message, 'error');
-        }
-    });
-}
-
-// Fungsi untuk hapus semua data Master Location
-function setupMasterLocationClear() {
-    const clearBtn = document.getElementById('clear-master-location-btn');
-    
-    if (!clearBtn) return;
-    
-    clearBtn.addEventListener('click', async function() {
-        if (!confirm('Apakah Anda yakin ingin menghapus SEMUA data master lokasi? Tindakan ini tidak dapat dibatalkan!')) {
-            return;
-        }
+        // ==============================
+        // UPLOAD, DOWNLOAD, ADD, DELETE FUNCTIONS
+        // ==============================
         
-        try {
-            // Hapus dari IndexedDB
-            if (storageManager.settings.enableIndexedDB && storageManager.db) {
-                const tx = storageManager.db.transaction(['masterLocation'], 'readwrite');
-                const store = tx.objectStore('masterLocation');
-                await store.clear();
-            }
-            
-            // Hapus dari localStorage
-            if (storageManager.settings.enableLocalStorage) {
-                localStorage.removeItem(`masterLocationData_${userKey}`);
-            }
-            
-            await renderMasterLocationData();
-            showToast('Semua data master lokasi berhasil dihapus');
-        } catch (error) {
-            console.error('Error clearing master location:', error);
-            showToast('Error menghapus data: ' + error.message, 'error');
-        }
-    });
-}
-
-// Fungsi untuk tambah data Master Location
-function setupMasterLocationAdd() {
-    const addBtn = document.getElementById('add-master-location-btn');
-    const saveBtn = document.getElementById('saveMasterLocationBtn');
-    const modal = new bootstrap.Modal(document.getElementById('addMasterLocationModal'));
-    
-    if (!addBtn || !saveBtn) return;
-    
-    addBtn.addEventListener('click', function() {
-        document.getElementById('addMasterLocationForm').reset();
-        modal.show();
-    });
-    
-    saveBtn.addEventListener('click', async function() {
-        const validationCode = document.getElementById('addValidationCode').value.trim();
-        const location = document.getElementById('addLocation').value.trim();
-        
-        if (!validationCode || !location) {
-            showToast('Harap isi semua field yang diperlukan', 'error');
-            return;
-        }
-        
-        try {
-            const newData = {
-                validationCode: validationCode,
-                location: location
-            };
-            
-            await storageManager.saveMasterLocation(newData);
-            await renderMasterLocationData();
-            modal.hide();
-            showToast('Data master lokasi berhasil ditambahkan');
-        } catch (error) {
-            console.error('Error adding master location:', error);
-            showToast('Error menambahkan data: ' + error.message, 'error');
-        }
-    });
-}
-
-// Fungsi untuk membaca file Excel
-function readExcelFile(file, progressBar, progressText) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        
-        reader.onload = function(e) {
-            try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
+        // Function to read Excel file
+        function readExcelFile(file, onProgress) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
                 
-                // Ambil sheet pertama
-                const firstSheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[firstSheetName];
-                
-                // Konversi ke JSON
-                const jsonData = XLSX.utils.sheet_to_json(worksheet);
-                
-                // Update progress
-                if (progressBar && progressText) {
-                    progressBar.style.width = '100%';
-                    progressText.textContent = '100%';
-                }
-                
-                resolve(jsonData);
-            } catch (error) {
-                reject(error);
-            }
-        };
-        
-        reader.onerror = function() {
-            reject(new Error('Gagal membaca file'));
-        };
-        
-        // Simulasi progress (karena FileReader tidak memiliki progress event untuk XLSX)
-        let progress = 0;
-        const progressInterval = setInterval(() => {
-            if (progress < 90) {
-                progress += 10;
-                if (progressBar && progressText) {
-                    progressBar.style.width = `${progress}%`;
-                    progressText.textContent = `${progress}%`;
-                }
-            }
-        }, 100);
-        
-        reader.onloadend = function() {
-            clearInterval(progressInterval);
-        };
-        
-        reader.readAsArrayBuffer(file);
-    });
-}
-
-// Setup serupa untuk Master EAN
-function setupMasterEanUpload() {
-    const uploadBtn = document.getElementById('upload-master-ean-btn');
-    const fileInput = document.getElementById('master-ean-file-input');
-    const progressContainer = document.getElementById('upload-master-ean-progress');
-    const progressBar = progressContainer.querySelector('.progress-bar');
-    const progressText = document.getElementById('upload-master-ean-text');
-
-    if (!uploadBtn || !fileInput) return;
-
-    uploadBtn.addEventListener('click', function() {
-        fileInput.click();
-    });
-
-    fileInput.addEventListener('change', async function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        if (!file.name.match(/\.(xlsx|xls)$/)) {
-            showToast('Harap pilih file Excel (.xlsx atau .xls)', 'error');
-            return;
-        }
-
-        try {
-            progressContainer.style.display = 'block';
-            progressBar.style.width = '0%';
-            progressText.textContent = '0%';
-
-            const data = await readExcelFile(file, progressBar, progressText);
-            
-            if (!Array.isArray(data) || data.length === 0) {
-                throw new Error('Data Excel tidak valid atau kosong');
-            }
-
-            const requiredColumns = ['EAN', 'SKU'];
-            const firstRow = data[0];
-            const hasRequiredColumns = requiredColumns.every(col => firstRow.hasOwnProperty(col));
-            
-            if (!hasRequiredColumns) {
-                throw new Error(`File Excel harus memiliki kolom: ${requiredColumns.join(', ')}`);
-            }
-
-            const transformedData = data.map(row => ({
-                ean: row['EAN'],
-                sku: row['SKU']
-            }));
-
-            await storageManager.saveMasterEan(transformedData);
-            
-            progressBar.style.width = '100%';
-            progressText.textContent = '100%';
-            
-            showToast(`Berhasil mengupload ${transformedData.length} data master EAN`);
-            await renderMasterEanData();
-            
-            fileInput.value = '';
-            
-            setTimeout(() => {
-                progressContainer.style.display = 'none';
-            }, 2000);
-            
-        } catch (error) {
-            console.error('Error uploading master EAN:', error);
-            showToast('Error mengupload data: ' + error.message, 'error');
-            progressContainer.style.display = 'none';
-        }
-    });
-}
-
-function setupMasterEanDownload() {
-    const downloadBtn = document.getElementById('download-master-ean-btn');
-    
-    if (!downloadBtn) return;
-    
-    downloadBtn.addEventListener('click', async function() {
-        try {
-            const data = await storageManager.getMasterEan();
-            
-            if (data.length === 0) {
-                showToast('Tidak ada data master EAN untuk didownload', 'info');
-                return;
-            }
-            
-            const excelData = data.map(item => ({
-                'EAN': item.ean,
-                'SKU': item.sku
-            }));
-            
-            const ws = XLSX.utils.json_to_sheet(excelData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Master EAN');
-            
-            XLSX.writeFile(wb, `master_ean_${new Date().toISOString().split('T')[0]}.xlsx`);
-            
-            showToast(`Berhasil mendownload ${data.length} data master EAN`);
-        } catch (error) {
-            console.error('Error downloading master EAN:', error);
-            showToast('Error mendownload data: ' + error.message, 'error');
-        }
-    });
-}
-
-function setupMasterEanClear() {
-    const clearBtn = document.getElementById('clear-master-ean-btn');
-    
-    if (!clearBtn) return;
-    
-    clearBtn.addEventListener('click', async function() {
-        if (!confirm('Apakah Anda yakin ingin menghapus SEMUA data master EAN? Tindakan ini tidak dapat dibatalkan!')) {
-            return;
-        }
-        
-        try {
-            if (storageManager.settings.enableIndexedDB && storageManager.db) {
-                const tx = storageManager.db.transaction(['masterEan'], 'readwrite');
-                const store = tx.objectStore('masterEan');
-                await store.clear();
-            }
-            
-            if (storageManager.settings.enableLocalStorage) {
-                localStorage.removeItem(`masterEanData_${userKey}`);
-            }
-            
-            await renderMasterEanData();
-            showToast('Semua data master EAN berhasil dihapus');
-        } catch (error) {
-            console.error('Error clearing master EAN:', error);
-            showToast('Error menghapus data: ' + error.message, 'error');
-        }
-    });
-}
-
-function setupMasterEanAdd() {
-    const addBtn = document.getElementById('add-master-ean-btn');
-    const saveBtn = document.getElementById('saveMasterEanBtn');
-    const modal = new bootstrap.Modal(document.getElementById('addMasterEanModal'));
-    
-    if (!addBtn || !saveBtn) return;
-    
-    addBtn.addEventListener('click', function() {
-        document.getElementById('addMasterEanForm').reset();
-        modal.show();
-    });
-    
-    saveBtn.addEventListener('click', async function() {
-        const ean = document.getElementById('addEan').value.trim();
-        const sku = document.getElementById('addSku').value.trim();
-        
-        if (!ean || !sku) {
-            showToast('Harap isi semua field yang diperlukan', 'error');
-            return;
-        }
-        
-        try {
-            const newData = {
-                ean: ean,
-                sku: sku
-            };
-            
-            await storageManager.saveMasterEan(newData);
-            await renderMasterEanData();
-            modal.hide();
-            showToast('Data master EAN berhasil ditambahkan');
-        } catch (error) {
-            console.error('Error adding master EAN:', error);
-            showToast('Error menambahkan data: ' + error.message, 'error');
-        }
-    });
-}
-
-// Setup serupa untuk Inventory
-function setupInventoryUpload() {
-    const uploadBtn = document.getElementById('upload-inventory-btn');
-    const fileInput = document.getElementById('inventory-file-input');
-    const progressContainer = document.getElementById('upload-inventory-progress');
-    const progressBar = progressContainer.querySelector('.progress-bar');
-    const progressText = document.getElementById('upload-inventory-text');
-
-    if (!uploadBtn || !fileInput) return;
-
-    uploadBtn.addEventListener('click', function() {
-        fileInput.click();
-    });
-
-    fileInput.addEventListener('change', async function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        if (!file.name.match(/\.(xlsx|xls)$/)) {
-            showToast('Harap pilih file Excel (.xlsx atau .xls)', 'error');
-            return;
-        }
-
-        try {
-            progressContainer.style.display = 'block';
-            progressBar.style.width = '0%';
-            progressText.textContent = '0%';
-
-            const data = await readExcelFile(file, progressBar, progressText);
-            
-            if (!Array.isArray(data) || data.length === 0) {
-                throw new Error('Data Excel tidak valid atau kosong');
-            }
-
-            const requiredColumns = ['Location ID', 'SKU'];
-            const firstRow = data[0];
-            const hasRequiredColumns = requiredColumns.every(col => firstRow.hasOwnProperty(col));
-            
-            if (!hasRequiredColumns) {
-                throw new Error(`File Excel harus memiliki kolom: ${requiredColumns.join(', ')}`);
-            }
-
-            const transformedData = data.map(row => ({
-                locationId: row['Location ID'],
-                sku: row['SKU'],
-                skuDescrL: row['SKU Descr(L)'] || '',
-                traceId: row['Trace ID'] || '',
-                qtyOnHand: row['QTY On Hand'] || 0
-            }));
-
-            await storageManager.saveInventory(transformedData);
-            
-            progressBar.style.width = '100%';
-            progressText.textContent = '100%';
-            
-            showToast(`Berhasil mengupload ${transformedData.length} data inventory`);
-            await renderInventoryData();
-            
-            fileInput.value = '';
-            
-            setTimeout(() => {
-                progressContainer.style.display = 'none';
-            }, 2000);
-            
-        } catch (error) {
-            console.error('Error uploading inventory:', error);
-            showToast('Error mengupload data: ' + error.message, 'error');
-            progressContainer.style.display = 'none';
-        }
-    });
-}
-
-function setupInventoryDownload() {
-    const downloadBtn = document.getElementById('download-inventory-btn');
-    
-    if (!downloadBtn) return;
-    
-    downloadBtn.addEventListener('click', async function() {
-        try {
-            const data = await storageManager.getInventory();
-            
-            if (data.length === 0) {
-                showToast('Tidak ada data inventory untuk didownload', 'info');
-                return;
-            }
-            
-            const excelData = data.map(item => ({
-                'Location ID': item.locationId,
-                'SKU': item.sku,
-                'SKU Descr(L)': item.skuDescrL,
-                'Trace ID': item.traceId,
-                'QTY On Hand': item.qtyOnHand
-            }));
-            
-            const ws = XLSX.utils.json_to_sheet(excelData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
-            
-            XLSX.writeFile(wb, `inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
-            
-            showToast(`Berhasil mendownload ${data.length} data inventory`);
-        } catch (error) {
-            console.error('Error downloading inventory:', error);
-            showToast('Error mendownload data: ' + error.message, 'error');
-        }
-    });
-}
-
-function setupInventoryClear() {
-    const clearBtn = document.getElementById('clear-inventory-btn');
-    
-    if (!clearBtn) return;
-    
-    clearBtn.addEventListener('click', async function() {
-        if (!confirm('Apakah Anda yakin ingin menghapus SEMUA data inventory? Tindakan ini tidak dapat dibatalkan!')) {
-            return;
-        }
-        
-        try {
-            if (storageManager.settings.enableIndexedDB && storageManager.db) {
-                const tx = storageManager.db.transaction(['inventory'], 'readwrite');
-                const store = tx.objectStore('inventory');
-                await store.clear();
-            }
-            
-            if (storageManager.settings.enableLocalStorage) {
-                localStorage.removeItem(`inventoryData_${userKey}`);
-            }
-            
-            await renderInventoryData();
-            showToast('Semua data inventory berhasil dihapus');
-        } catch (error) {
-            console.error('Error clearing inventory:', error);
-            showToast('Error menghapus data: ' + error.message, 'error');
-        }
-    });
-}
-
-function setupInventoryAdd() {
-    const addBtn = document.getElementById('add-inventory-btn');
-    const saveBtn = document.getElementById('saveInventoryBtn');
-    const modal = new bootstrap.Modal(document.getElementById('addInventoryModal'));
-    
-    if (!addBtn || !saveBtn) return;
-    
-    addBtn.addEventListener('click', function() {
-        document.getElementById('addInventoryForm').reset();
-        modal.show();
-    });
-    
-    saveBtn.addEventListener('click', async function() {
-        const locationId = document.getElementById('addLocationId').value.trim();
-        const sku = document.getElementById('addSkuInventory').value.trim();
-        const skuDescrL = document.getElementById('addSkuDescrL').value.trim();
-        const traceId = document.getElementById('addTraceId').value.trim();
-        const qtyOnHand = document.getElementById('addQtyOnHand').value.trim();
-        
-        if (!locationId || !sku) {
-            showToast('Harap isi Location ID dan SKU', 'error');
-            return;
-        }
-        
-        try {
-            const newData = {
-                locationId: locationId,
-                sku: sku,
-                skuDescrL: skuDescrL,
-                traceId: traceId,
-                qtyOnHand: qtyOnHand ? parseInt(qtyOnHand) : 0
-            };
-            
-            await storageManager.saveInventory(newData);
-            await renderInventoryData();
-            modal.hide();
-            showToast('Data inventory berhasil ditambahkan');
-        } catch (error) {
-            console.error('Error adding inventory:', error);
-            showToast('Error menambahkan data: ' + error.message, 'error');
-        }
-    });
-}
-
-// Panggil setup functions dalam initApp
-async function initApp() {
-    try {
-        // ... kode yang sudah ada ...
-        
-        // Setup fungsi upload, download, hapus, tambah untuk semua tab
-        setupMasterLocationUpload();
-        setupMasterLocationDownload();
-        setupMasterLocationClear();
-        setupMasterLocationAdd();
-        
-        setupMasterEanUpload();
-        setupMasterEanDownload();
-        setupMasterEanClear();
-        setupMasterEanAdd();
-        
-        setupInventoryUpload();
-        setupInventoryDownload();
-        setupInventoryClear();
-        setupInventoryAdd();
-        
-        // ... kode yang sudah ada ...
-        
-    } catch (error) {
-        console.error('Error in initApp:', error);
-        showToast('Terjadi kesalahan dalam inisialisasi aplikasi: ' + error.message, 'error');
-    }
-}
-            // Fungsi untuk hapus data count terpilih
-function setupDeleteSelectedDataCount() {
-    const deleteSelectedBtn = document.getElementById('delete-selected-btn');
-    
-    if (!deleteSelectedBtn) return;
-    
-    deleteSelectedBtn.addEventListener('click', async function() {
-        const selectedCheckboxes = document.querySelectorAll('.data-checkbox:checked');
-        
-        if (selectedCheckboxes.length === 0) {
-            showToast('Tidak ada data yang dipilih untuk dihapus', 'info');
-            return;
-        }
-        
-        if (!confirm(`Apakah Anda yakin ingin menghapus ${selectedCheckboxes.length} data terpilih?`)) {
-            return;
-        }
-        
-        try {
-            const idsToDelete = Array.from(selectedCheckboxes).map(checkbox => 
-                checkbox.getAttribute('data-id')
-            );
-            
-            await storageManager.deleteMultipleCycleCount(idsToDelete);
-            await renderDataCountTable();
-            showToast(`${idsToDelete.length} data berhasil dihapus`);
-        } catch (error) {
-            console.error('Error deleting selected data count:', error);
-            showToast('Error menghapus data: ' + error.message, 'error');
-        }
-    });
-}
-
-// Panggil dalam initApp
-setupDeleteSelectedDataCount();
-            // Fungsi untuk export data count ke Excel
-function setupExportDataCount() {
-    const exportBtn = document.getElementById('export-btn');
-    
-    if (!exportBtn) return;
-    
-    exportBtn.addEventListener('click', async function() {
-        try {
-            const startDateFilter = document.getElementById('start-date');
-            const endDateFilter = document.getElementById('end-date');
-            
-            const startDate = startDateFilter && startDateFilter.value ? new Date(startDateFilter.value) : new Date(0);
-            const endDate = endDateFilter && endDateFilter.value ? new Date(endDateFilter.value) : new Date();
-            endDate.setHours(23, 59, 59, 999);
-            
-            const data = await storageManager.getCycleCount(startDate, endDate);
-            
-            if (data.length === 0) {
-                showToast('Tidak ada data untuk diexport', 'info');
-                return;
-            }
-            
-            const excelData = data.map(item => {
-                const date = new Date(item.timestamp);
-                const formattedDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-                
-                return {
-                    'Tanggal': formattedDate,
-                    'Lokasi': item.location,
-                    'EAN': item.ean,
-                    'SKU': item.sku,
-                    'Count Type': item.countType,
-                    'Qty': item.qty,
-                    'Remark': item.remark || ''
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                        resolve(jsonData);
+                    } catch (error) {
+                        reject(error);
+                    }
                 };
+                
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+        
+        // Function to download data as Excel
+        function downloadAsExcel(data, filename) {
+            try {
+                const worksheet = XLSX.utils.json_to_sheet(data);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
+                XLSX.writeFile(workbook, filename);
+                return true;
+            } catch (error) {
+                console.error('Error downloading Excel file:', error);
+                return false;
+            }
+        }
+        
+        // Master Location Functions
+        function setupMasterLocationFunctions() {
+            // Upload Master Location
+            document.getElementById('upload-master-location-btn').addEventListener('click', function() {
+                document.getElementById('master-location-file-input').click();
             });
             
-            const ws = XLSX.utils.json_to_sheet(excelData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Cycle Count Data');
+            document.getElementById('master-location-file-input').addEventListener('change', async function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const progressBar = document.getElementById('upload-master-location-progress');
+                const progressText = document.getElementById('upload-master-location-text');
+                progressBar.style.display = 'block';
+                progressText.textContent = '0%';
+                
+                try {
+                    const data = await readExcelFile(file);
+                    
+                    // Validate required columns
+                    if (!data.length || !data[0]['Validation Code'] || !data[0]['Location']) {
+                        throw new Error('Format file tidak valid. Pastikan file memiliki kolom "Validation Code" dan "Location".');
+                    }
+                    
+                    // Transform data
+                    const masterLocationData = data.map(row => ({
+                        validationCode: row['Validation Code'],
+                        location: row['Location']
+                    }));
+                    
+                    // Save data
+                    await storageManager.saveMasterLocation(masterLocationData);
+                    showToast('Data Master Lokasi berhasil diupload!');
+                    await renderMasterLocationData();
+                } catch (error) {
+                    console.error('Error uploading master location data:', error);
+                    showToast('Error uploading data: ' + error.message, 'error');
+                } finally {
+                    progressBar.style.display = 'none';
+                    e.target.value = '';
+                }
+            });
             
-            XLSX.writeFile(wb, `cycle_count_data_${new Date().toISOString().split('T')[0]}.xlsx`);
+            // Download Master Location
+            document.getElementById('download-master-location-btn').addEventListener('click', async function() {
+                try {
+                    const data = await storageManager.getMasterLocation();
+                    if (data.length === 0) {
+                        showToast('Tidak ada data untuk didownload', 'info');
+                        return;
+                    }
+                    
+                    // Transform data for Excel
+                    const excelData = data.map(item => ({
+                        'Validation Code': item.validationCode,
+                        'Location': item.location
+                    }));
+                    
+                    const success = downloadAsExcel(excelData, 'master_location.xlsx');
+                    if (success) {
+                        showToast('Data Master Lokasi berhasil didownload!');
+                    } else {
+                        showToast('Error downloading data', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error downloading master location data:', error);
+                    showToast('Error downloading data: ' + error.message, 'error');
+                }
+            });
             
-            showToast(`Berhasil mengexport ${data.length} data cycle count`);
-        } catch (error) {
-            console.error('Error exporting data count:', error);
-            showToast('Error mengexport data: ' + error.message, 'error');
+            // Clear Master Location
+            document.getElementById('clear-master-location-btn').addEventListener('click', async function() {
+                if (confirm('Apakah Anda yakin ingin menghapus semua data Master Lokasi?')) {
+                    try {
+                        const data = await storageManager.getMasterLocation();
+                        for (const item of data) {
+                            await storageManager.deleteMasterLocation(item.validationCode);
+                        }
+                        showToast('Semua data Master Lokasi berhasil dihapus!');
+                        await renderMasterLocationData();
+                    } catch (error) {
+                        console.error('Error clearing master location data:', error);
+                        showToast('Error menghapus data: ' + error.message, 'error');
+                    }
+                }
+            });
+            
+            // Add Master Location
+            document.getElementById('add-master-location-btn').addEventListener('click', function() {
+                const validationCode = prompt('Masukkan Validation Code:');
+                if (validationCode === null) return;
+                
+                const location = prompt('Masukkan Location:');
+                if (location === null) return;
+                
+                if (!validationCode || !location) {
+                    showToast('Validation Code dan Location harus diisi!', 'error');
+                    return;
+                }
+                
+                storageManager.saveMasterLocation({ validationCode, location })
+                    .then(() => {
+                        showToast('Data Master Lokasi berhasil ditambahkan!');
+                        renderMasterLocationData();
+                    })
+                    .catch(error => {
+                        console.error('Error adding master location data:', error);
+                        showToast('Error menambah data: ' + error.message, 'error');
+                    });
+            });
+            
+            // Sync Master Location
+            document.getElementById('sync-master-location').addEventListener('click', async function() {
+                try {
+                    const data = await storageManager.getMasterLocation();
+                    await syncDataWithGithub('master_location', data);
+                    showToast('Data Master Lokasi berhasil disinkronisasi!');
+                } catch (error) {
+                    console.error('Error syncing master location data:', error);
+                    showToast('Error sinkronisasi data: ' + error.message, 'error');
+                }
+            });
         }
-    });
-}
-
-// Panggil dalam initApp
-setupExportDataCount();
+        
+        // Master EAN Functions
+        function setupMasterEanFunctions() {
+            // Upload Master EAN
+            document.getElementById('upload-master-ean-btn').addEventListener('click', function() {
+                document.getElementById('master-ean-file-input').click();
+            });
+            
+            document.getElementById('master-ean-file-input').addEventListener('change', async function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const progressBar = document.getElementById('upload-master-ean-progress');
+                const progressText = document.getElementById('upload-master-ean-text');
+                progressBar.style.display = 'block';
+                progressText.textContent = '0%';
+                
+                try {
+                    const data = await readExcelFile(file);
+                    
+                    // Validate required columns
+                    if (!data.length || !data[0]['EAN'] || !data[0]['SKU']) {
+                        throw new Error('Format file tidak valid. Pastikan file memiliki kolom "EAN" dan "SKU".');
+                    }
+                    
+                    // Transform data
+                    const masterEanData = data.map(row => ({
+                        ean: row['EAN'],
+                        sku: row['SKU']
+                    }));
+                    
+                    // Save data
+                    await storageManager.saveMasterEan(masterEanData);
+                    showToast('Data Master EAN berhasil diupload!');
+                    await renderMasterEanData();
+                } catch (error) {
+                    console.error('Error uploading master EAN data:', error);
+                    showToast('Error uploading data: ' + error.message, 'error');
+                } finally {
+                    progressBar.style.display = 'none';
+                    e.target.value = '';
+                }
+            });
+            
+            // Download Master EAN
+            document.getElementById('download-master-ean-btn').addEventListener('click', async function() {
+                try {
+                    const data = await storageManager.getMasterEan();
+                    if (data.length === 0) {
+                        showToast('Tidak ada data untuk didownload', 'info');
+                        return;
+                    }
+                    
+                    // Transform data for Excel
+                    const excelData = data.map(item => ({
+                        'EAN': item.ean,
+                        'SKU': item.sku
+                    }));
+                    
+                    const success = downloadAsExcel(excelData, 'master_ean.xlsx');
+                    if (success) {
+                        showToast('Data Master EAN berhasil didownload!');
+                    } else {
+                        showToast('Error downloading data', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error downloading master EAN data:', error);
+                    showToast('Error downloading data: ' + error.message, 'error');
+                }
+            });
+            
+            // Clear Master EAN
+            document.getElementById('clear-master-ean-btn').addEventListener('click', async function() {
+                if (confirm('Apakah Anda yakin ingin menghapus semua data Master EAN?')) {
+                    try {
+                        const data = await storageManager.getMasterEan();
+                        for (const item of data) {
+                            await storageManager.deleteMasterEan(item.ean);
+                        }
+                        showToast('Semua data Master EAN berhasil dihapus!');
+                        await renderMasterEanData();
+                    } catch (error) {
+                        console.error('Error clearing master EAN data:', error);
+                        showToast('Error menghapus data: ' + error.message, 'error');
+                    }
+                }
+            });
+            
+            // Add Master EAN
+            document.getElementById('add-master-ean-btn').addEventListener('click', function() {
+                const ean = prompt('Masukkan EAN:');
+                if (ean === null) return;
+                
+                const sku = prompt('Masukkan SKU:');
+                if (sku === null) return;
+                
+                if (!ean || !sku) {
+                    showToast('EAN dan SKU harus diisi!', 'error');
+                    return;
+                }
+                
+                storageManager.saveMasterEan({ ean, sku })
+                    .then(() => {
+                        showToast('Data Master EAN berhasil ditambahkan!');
+                        renderMasterEanData();
+                    })
+                    .catch(error => {
+                        console.error('Error adding master EAN data:', error);
+                        showToast('Error menambah data: ' + error.message, 'error');
+                    });
+            });
+            
+            // Sync Master EAN
+            document.getElementById('sync-master-ean').addEventListener('click', async function() {
+                try {
+                    const data = await storageManager.getMasterEan();
+                    await syncDataWithGithub('master_ean', data);
+                    showToast('Data Master EAN berhasil disinkronisasi!');
+                } catch (error) {
+                    console.error('Error syncing master EAN data:', error);
+                    showToast('Error sinkronisasi data: ' + error.message, 'error');
+                }
+            });
+        }
+        
+        // Inventory Functions
+        function setupInventoryFunctions() {
+            // Upload Inventory
+            document.getElementById('upload-inventory-btn').addEventListener('click', function() {
+                document.getElementById('inventory-file-input').click();
+            });
+            
+            document.getElementById('inventory-file-input').addEventListener('change', async function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const progressBar = document.getElementById('upload-inventory-progress');
+                const progressText = document.getElementById('upload-inventory-text');
+                progressBar.style.display = 'block';
+                progressText.textContent = '0%';
+                
+                try {
+                    const data = await readExcelFile(file);
+                    
+                    // Validate required columns
+                    if (!data.length || !data[0]['Location ID'] || !data[0]['SKU']) {
+                        throw new Error('Format file tidak valid. Pastikan file memiliki kolom "Location ID" dan "SKU".');
+                    }
+                    
+                    // Transform data
+                    const inventoryData = data.map(row => ({
+                        locationId: row['Location ID'],
+                        sku: row['SKU'],
+                        skuDescrL: row['SKU Descr(L)'] || '',
+                        traceId: row['Trace ID'] || '',
+                        qtyOnHand: row['QTY On Hand'] || 0
+                    }));
+                    
+                    // Save data
+                    await storageManager.saveInventory(inventoryData);
+                    showToast('Data Inventory berhasil diupload!');
+                    await renderInventoryData();
+                } catch (error) {
+                    console.error('Error uploading inventory data:', error);
+                    showToast('Error uploading data: ' + error.message, 'error');
+                } finally {
+                    progressBar.style.display = 'none';
+                    e.target.value = '';
+                }
+            });
+            
+            // Download Inventory
+            document.getElementById('download-inventory-btn').addEventListener('click', async function() {
+                try {
+                    const data = await storageManager.getInventory();
+                    if (data.length === 0) {
+                        showToast('Tidak ada data untuk didownload', 'info');
+                        return;
+                    }
+                    
+                    // Transform data for Excel
+                    const excelData = data.map(item => ({
+                        'Location ID': item.locationId,
+                        'SKU': item.sku,
+                        'SKU Descr(L)': item.skuDescrL,
+                        'Trace ID': item.traceId,
+                        'QTY On Hand': item.qtyOnHand
+                    }));
+                    
+                    const success = downloadAsExcel(excelData, 'inventory.xlsx');
+                    if (success) {
+                        showToast('Data Inventory berhasil didownload!');
+                    } else {
+                        showToast('Error downloading data', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error downloading inventory data:', error);
+                    showToast('Error downloading data: ' + error.message, 'error');
+                }
+            });
+            
+            // Clear Inventory
+            document.getElementById('clear-inventory-btn').addEventListener('click', async function() {
+                if (confirm('Apakah Anda yakin ingin menghapus semua data Inventory?')) {
+                    try {
+                        const data = await storageManager.getInventory();
+                        for (const item of data) {
+                            await storageManager.deleteInventory(item.id);
+                        }
+                        showToast('Semua data Inventory berhasil dihapus!');
+                        await renderInventoryData();
+                    } catch (error) {
+                        console.error('Error clearing inventory data:', error);
+                        showToast('Error menghapus data: ' + error.message, 'error');
+                    }
+                }
+            });
+            
+            // Add Inventory
+            document.getElementById('add-inventory-btn').addEventListener('click', function() {
+                const locationId = prompt('Masukkan Location ID:');
+                if (locationId === null) return;
+                
+                const sku = prompt('Masukkan SKU:');
+                if (sku === null) return;
+                
+                const skuDescrL = prompt('Masukkan SKU Descr(L) (opsional):') || '';
+                const traceId = prompt('Masukkan Trace ID (opsional):') || '';
+                const qtyOnHand = prompt('Masukkan QTY On Hand (opsional):') || 0;
+                
+                if (!locationId || !sku) {
+                    showToast('Location ID dan SKU harus diisi!', 'error');
+                    return;
+                }
+                
+                storageManager.saveInventory({ locationId, sku, skuDescrL, traceId, qtyOnHand })
+                    .then(() => {
+                        showToast('Data Inventory berhasil ditambahkan!');
+                        renderInventoryData();
+                    })
+                    .catch(error => {
+                        console.error('Error adding inventory data:', error);
+                        showToast('Error menambah data: ' + error.message, 'error');
+                    });
+            });
+            
+            // Sync Inventory
+            document.getElementById('sync-inventory').addEventListener('click', async function() {
+                try {
+                    const data = await storageManager.getInventory();
+                    await syncDataWithGithub('inventory_data', data);
+                    showToast('Data Inventory berhasil disinkronisasi!');
+                } catch (error) {
+                    console.error('Error syncing inventory data:', error);
+                    showToast('Error sinkronisasi data: ' + error.message, 'error');
+                }
+            });
+        }
+        
+        // Data Count Functions
+        function setupDataCountFunctions() {
+            // Sync Cycle Count
+            document.getElementById('sync-cyclecount').addEventListener('click', async function() {
+                try {
+                    const data = await storageManager.getCycleCount();
+                    await syncDataWithGithub('cycle_count', data);
+                    showToast('Data Cycle Count berhasil disinkronisasi!');
+                } catch (error) {
+                    console.error('Error syncing cycle count data:', error);
+                    showToast('Error sinkronisasi data: ' + error.message, 'error');
+                }
+            });
+            
+            // Export Data Count
+            document.getElementById('export-btn').addEventListener('click', async function() {
+                try {
+                    const startDateFilter = document.getElementById('start-date');
+                    const endDateFilter = document.getElementById('end-date');
+                    
+                    const startDate = startDateFilter && startDateFilter.value ? new Date(startDateFilter.value) : new Date(0);
+                    const endDate = endDateFilter && endDateFilter.value ? new Date(endDateFilter.value) : new Date();
+                    endDate.setHours(23, 59, 59, 999);
+                    
+                    const data = await storageManager.getCycleCount(startDate, endDate);
+                    if (data.length === 0) {
+                        showToast('Tidak ada data untuk diexport', 'info');
+                        return;
+                    }
+                    
+                    // Transform data for Excel
+                    const excelData = data.map(item => {
+                        const date = new Date(item.timestamp);
+                        const formattedDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                        
+                        return {
+                            'Tanggal': formattedDate,
+                            'Lokasi': item.location,
+                            'EAN': item.ean,
+                            'SKU': item.sku,
+                            'Count Type': item.countType,
+                            'Qty': item.qty,
+                            'Remark': item.remark || ''
+                        };
+                    });
+                    
+                    const success = downloadAsExcel(excelData, 'cycle_count_data.xlsx');
+                    if (success) {
+                        showToast('Data Cycle Count berhasil diexport!');
+                    } else {
+                        showToast('Error exporting data', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error exporting data count:', error);
+                    showToast('Error exporting data: ' + error.message, 'error');
+                }
+            });
+            
+            // Delete Selected Data Count
+            document.getElementById('delete-selected-btn').addEventListener('click', async function() {
+                const selectedCheckboxes = document.querySelectorAll('.data-checkbox:checked');
+                if (selectedCheckboxes.length === 0) {
+                    showToast('Tidak ada data yang dipilih untuk dihapus', 'info');
+                    return;
+                }
+                
+                if (!confirm(`Apakah Anda yakin ingin menghapus ${selectedCheckboxes.length} data yang dipilih?`)) {
+                    return;
+                }
+                
+                try {
+                    const idsToDelete = Array.from(selectedCheckboxes).map(checkbox => checkbox.getAttribute('data-id'));
+                    await storageManager.deleteMultipleCycleCount(idsToDelete);
+                    await renderDataCountTable();
+                    showToast(`${idsToDelete.length} data berhasil dihapus`);
+                } catch (error) {
+                    console.error('Error deleting selected data count:', error);
+                    showToast('Error menghapus data: ' + error.message, 'error');
+                }
+            });
+            
+            // Select All Checkbox
+            document.getElementById('select-all').addEventListener('change', function() {
+                const checkboxes = document.querySelectorAll('.data-checkbox');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = this.checked;
+                });
+            });
+            
+            // Filter Data Count
+            document.getElementById('filter-btn').addEventListener('click', function() {
+                renderDataCountTable();
+            });
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
             // Login functionality
             const loginContainer = document.getElementById('login-container');
             const appContainer = document.getElementById('app-container');
@@ -3360,7 +3089,6 @@ setupExportDataCount();
                 const username = document.getElementById('username').value.trim();
                 const password = document.getElementById('password').value;
                 
-                // Simple validation - in a real app, you would verify credentials with a server
                 if (username && password) {
                     sessionStorage.setItem('currentUser', username);
                     try {
@@ -3377,7 +3105,6 @@ setupExportDataCount();
             
             // Logout functionality
             logoutBtn.addEventListener('click', function() {
-                // Clear auto sync interval
                 if (autoSyncInterval) {
                     clearInterval(autoSyncInterval);
                     autoSyncInterval = null;
@@ -3394,7 +3121,6 @@ setupExportDataCount();
                     mobileNavBackdrop.classList.toggle('expanded');
                 });
                 
-                // Close sidebar when clicking on backdrop
                 mobileNavBackdrop.addEventListener('click', function() {
                     sidebar.classList.remove('expanded');
                     mobileNavBackdrop.classList.remove('expanded');
@@ -3440,14 +3166,11 @@ setupExportDataCount();
                         userWelcome.textContent = `Halo, ${username}`;
                     }
                     
-                    // Initialize the storage manager
                     storageManager = new HybridStorageManager(userKey);
                     await storageManager.initPromise;
                     
-                    // Initialize the app with user-specific data
                     await initApp();
                     
-                    // Test GitHub connection
                     setTimeout(testGithubConnection, 1000);
                 } catch (error) {
                     console.error('Error in showApp:', error);
@@ -3474,11 +3197,9 @@ setupExportDataCount();
                     
                     const tabId = this.getAttribute('data-tab');
                     
-                    // Update active tab link
                     sidebarLinks.forEach(l => l.classList.remove('active'));
                     this.classList.add('active');
                     
-                    // If this is a submenu item, also activate the parent
                     if (this.closest('.sidebar-submenu')) {
                         const parentItem = this.closest('.has-submenu');
                         if (parentItem) {
@@ -3489,20 +3210,17 @@ setupExportDataCount();
                         }
                     }
                     
-                    // Show active tab content
                     tabContents.forEach(content => content.style.display = 'none');
                     const activeTab = document.getElementById(`${tabId}-tab`);
                     if (activeTab) {
                         activeTab.style.display = 'block';
                     }
                     
-                    // Close sidebar on mobile after selection
                     if (window.innerWidth < 992) {
                         if (sidebar) sidebar.classList.remove('expanded');
                         if (mobileNavBackdrop) mobileNavBackdrop.classList.remove('expanded');
                     }
                     
-                    // If data count tab is selected, render the data
                     if (tabId === 'data-count') {
                         renderDataCountTable();
                     } else if (tabId === 'master-location') {
@@ -3522,6 +3240,12 @@ setupExportDataCount();
             // Initialize app with user-specific data
             async function initApp() {
                 try {
+                    // Setup all functions
+                    setupMasterLocationFunctions();
+                    setupMasterEanFunctions();
+                    setupInventoryFunctions();
+                    setupDataCountFunctions();
+                    
                     // Form elements
                     const form = document.getElementById('cycleCountForm');
                     const locationField = document.getElementById('location');
@@ -3565,238 +3289,102 @@ setupExportDataCount();
                         endDateFilter.value = today.toISOString().split('T')[0];
                     }
                     
-                    // Variables for navigation
-                    let currentLocationItems = [];
-                    let currentItemIndex = 0;
-                    let eanInputTimeout;
-                    
-                    // Load last sync info
-                    function loadLastSyncInfo() {
-                        // Implementation similar to before
-                    }
-                    
-                    // Load auto-sync preference
-                    if (autoSyncToggle) {
-                        const autoSyncEnabled = localStorage.getItem(`autoSyncEnabled_${userKey}`);
-                        if (autoSyncEnabled !== null) {
-                            autoSyncToggle.checked = autoSyncEnabled === 'true';
-                        }
-                        
-                        // Save auto-sync preference when changed
-                        autoSyncToggle.addEventListener('change', function() {
-                            localStorage.setItem(`autoSyncEnabled_${userKey}`, this.checked);
-                        });
-                    }
-                    
-                    // Function to display current location SKU count
-                    async function renderCurrentLocationSKUCount(location) {
-                        if (!currentLocationDisplay || !currentLocationName || !currentLocationSkuCount) return;
-                        
-                        if (!location) {
-                            currentLocationDisplay.style.display = 'none';
-                            return;
-                        }
-                        
-                        try {
-                            // Calculate SKU count for the current location from inventory data
-                            const inventoryData = await storageManager.getInventory();
-                            const skuSet = new Set();
-                            
-                            inventoryData.forEach(item => {
-                                if (item.locationId === location) {
-                                    skuSet.add(item.sku);
-                                }
-                            });
-                            
-                            const skuCount = skuSet.size;
-                            
-                            // Update display
-                            currentLocationName.textContent = location;
-                            currentLocationSkuCount.textContent = skuCount;
-                            currentLocationDisplay.style.display = 'block';
-                        } catch (error) {
-                            console.error('Error rendering current location SKU count:', error);
-                        }
-                    }
-                    
-                    // Save location and load related data
+                    // Save location button
                     if (saveLocationBtn && locationField) {
                         saveLocationBtn.addEventListener('click', function() {
                             const location = locationField.value.trim();
-                            if (!location) {
-                                showToast('Harap masukkan kode lokasi!', 'error');
-                                return;
-                            }
-                            
-                            // Update current location display
-                            renderCurrentLocationSKUCount(location);
-                            
-                            showToast('Lokasi berhasil disimpan!');
-                        });
-                    }
-                    
-                    // EAN input event listener for real-time search
-                    if (eanField) {
-                        eanField.addEventListener('input', function() {
-                            // Clear previous timeout
-                            clearTimeout(eanInputTimeout);
-                            
-                            // Show loading indicator
-                            if (eanLoading) eanLoading.style.display = 'block';
-                            
-                            // Set timeout to delay the search
-                            eanInputTimeout = setTimeout(async () => {
-                                await handleLocationAndEANCheck();
-                                if (eanLoading) eanLoading.style.display = 'none';
-                            }, 500); // 500ms delay after typing stops
-                        });
-                    }
-                    
-                    async function handleLocationAndEANCheck() {
-                        const location = locationField ? locationField.value.trim() : '';
-                        const ean = eanField ? eanField.value.trim() : '';
-                        
-                        if (!location) {
-                            showToast('Harap masukkan kode lokasi!', 'error');
-                            return;
-                        }
-                        
-                        if (!ean) {
-                            // Reset fields if EAN is empty
-                            if (skuField) skuField.value = '';
-                            if (descriptionField) descriptionField.value = '';
-                            if (traceIdField) traceIdField.value = '';
-                            return;
-                        }
-                        
-                        // Update current location display
-                        await renderCurrentLocationSKUCount(location);
-                        
-                        try {
-                            // Look up in inventory data based on location and SKU
-                            currentLocationItems = await storageManager.searchInventory(location, ean);
-                            
-                            if (currentLocationItems.length > 0) {
-                                // If found, show the first item
-                                currentItemIndex = 0;
-                                displayCurrentItem();
-                                
-                                // Hide notification if shown
-                                if (notification) notification.style.display = 'none';
-                                
-                                // Show navigation if multiple items
-                                if (navigationContainer && currentLocationItems.length > 1) {
-                                    navigationContainer.style.display = 'block';
-                                    updateNavigationButtons();
-                                } else if (navigationContainer) {
-                                    navigationContainer.style.display = 'none';
+                            if (location) {
+                                sessionStorage.setItem('currentLocation', location);
+                                if (currentLocationDisplay) {
+                                    currentLocationDisplay.style.display = 'block';
                                 }
+                                if (currentLocationName) {
+                                    currentLocationName.textContent = location;
+                                }
+                                
+                                // Count SKUs for this location
+                                if (storageManager) {
+                                    storageManager.getInventory().then(inventoryData => {
+                                        const locationSKUs = inventoryData.filter(item => item.locationId === location);
+                                        if (currentLocationSkuCount) {
+                                            currentLocationSkuCount.textContent = locationSKUs.length;
+                                        }
+                                    });
+                                }
+                                
+                                showToast(`Lokasi ${location} berhasil disimpan`);
                             } else {
-                                // If not found, show notification
-                                if (notification) notification.style.display = 'block';
-                                
-                                // Clear other fields
-                                if (skuField) skuField.value = '';
-                                if (descriptionField) descriptionField.value = '';
-                                if (traceIdField) traceIdField.value = '';
-                                
-                                // Hide navigation
-                                if (navigationContainer) navigationContainer.style.display = 'none';
-                            }
-                            
-                            // Check for existing count data
-                            await checkExistingCountData();
-                        } catch (error) {
-                            console.error('Error handling location and EAN check:', error);
-                            showToast('Error memeriksa data: ' + error.message, 'error');
-                        }
-                    }
-                    
-                    // Check if count data already exists for this location, EAN, and Trace ID
-                    async function checkExistingCountData() {
-                        const location = locationField ? locationField.value.trim() : '';
-                        const ean = eanField ? eanField.value.trim() : '';
-                        const traceId = traceIdField ? traceIdField.value : '';
-                        const countType = countTypeField ? countTypeField.value : '';
-                        
-                        if (!location || !ean || !traceId) return;
-                        
-                        try {
-                            const cycleCountData = await storageManager.getCycleCount();
-                            
-                            // Find existing count for this location, EAN, traceId and count type
-                            const existingCount = cycleCountData.find(item => 
-                                item.location === location && 
-                                item.ean === ean && 
-                                item.traceId === traceId && 
-                                item.countType === countType
-                            );
-                            
-                            if (existingCount && qtyField) {
-                                qtyField.value = existingCount.qty;
-                                qtyField.setAttribute('readonly', true);
-                                if (countSavedNotification) countSavedNotification.style.display = 'block';
-                            } else if (qtyField) {
-                                qtyField.value = '';
-                                qtyField.removeAttribute('readonly');
-                                if (countSavedNotification) countSavedNotification.style.display = 'none';
-                            }
-                        } catch (error) {
-                            console.error('Error checking existing count data:', error);
-                        }
-                    }
-                    
-                    // Display current item based on currentItemIndex
-                    function displayCurrentItem() {
-                        if (currentLocationItems.length === 0) return;
-                        
-                        const item = currentLocationItems[currentItemIndex];
-                        if (skuField) skuField.value = item.sku || '';
-                        if (descriptionField) descriptionField.value = item.skuDescrL || '';
-                        if (traceIdField) traceIdField.value = item.traceId || '';
-                        if (qtyField) qtyField.value = item.qtyOnHand || '';
-                        
-                        // Update navigation info
-                        if (navInfo) navInfo.textContent = `Item ${currentItemIndex + 1} of ${currentLocationItems.length}`;
-                        
-                        // Check if count already exists for this specific item
-                        checkExistingCountData();
-                    }
-                    
-                    // Update navigation buttons state
-                    function updateNavigationButtons() {
-                        if (!prevBtn || !nextBtn) return;
-                        
-                        prevBtn.disabled = currentItemIndex === 0;
-                        nextBtn.disabled = currentItemIndex === currentLocationItems.length - 1;
-                    }
-                    
-                    // Previous button event
-                    if (prevBtn) {
-                        prevBtn.addEventListener('click', function() {
-                            if (currentItemIndex > 0) {
-                                currentItemIndex--;
-                                displayCurrentItem();
-                                updateNavigationButtons();
+                                showToast('Harap masukkan kode lokasi', 'error');
                             }
                         });
                     }
                     
-                    // Next button event
-                    if (nextBtn) {
-                        nextBtn.addEventListener('click', function() {
-                            if (currentItemIndex < currentLocationItems.length - 1) {
-                                currentItemIndex++;
-                                displayCurrentItem();
-                                updateNavigationButtons();
-                            }
-                        });
+                    // Load saved location
+                    const savedLocation = sessionStorage.getItem('currentLocation');
+                    if (savedLocation && locationField) {
+                        locationField.value = savedLocation;
+                        if (currentLocationDisplay) {
+                            currentLocationDisplay.style.display = 'block';
+                        }
+                        if (currentLocationName) {
+                            currentLocationName.textContent = savedLocation;
+                        }
+                        
+                        // Count SKUs for this location
+                        if (storageManager) {
+                            storageManager.getInventory().then(inventoryData => {
+                                const locationSKUs = inventoryData.filter(item => item.locationId === savedLocation);
+                                if (currentLocationSkuCount) {
+                                    currentLocationSkuCount.textContent = locationSKUs.length;
+                                }
+                            });
+                        }
                     }
                     
-                    // Count type change event
-                    if (countTypeField) {
-                        countTypeField.addEventListener('change', function() {
-                            checkExistingCountData();
+                    // EAN field with auto-complete
+                    if (eanField) {
+                        eanField.addEventListener('input', async function() {
+                            const ean = this.value.trim();
+                            
+                            if (ean.length >= 8) {
+                                if (eanLoading) eanLoading.style.display = 'block';
+                                
+                                try {
+                                    const masterEanData = await storageManager.getMasterEan();
+                                    const matchedEan = masterEanData.find(item => item.ean === ean);
+                                    
+                                    if (matchedEan) {
+                                        if (skuField) skuField.value = matchedEan.sku;
+                                        
+                                        // Search inventory for this SKU at current location
+                                        const currentLocation = sessionStorage.getItem('currentLocation');
+                                        if (currentLocation) {
+                                            const inventoryData = await storageManager.searchInventory(currentLocation, matchedEan.sku);
+                                            
+                                            if (inventoryData.length > 0) {
+                                                const item = inventoryData[0];
+                                                if (descriptionField) descriptionField.value = item.skuDescrL || '';
+                                                if (traceIdField) traceIdField.value = item.traceId || '';
+                                                
+                                                if (notification) notification.style.display = 'none';
+                                            } else {
+                                                if (notification) notification.style.display = 'block';
+                                                if (descriptionField) descriptionField.value = '';
+                                                if (traceIdField) traceIdField.value = '';
+                                            }
+                                        }
+                                    } else {
+                                        if (skuField) skuField.value = '';
+                                        if (descriptionField) descriptionField.value = '';
+                                        if (traceIdField) traceIdField.value = '';
+                                        if (notification) notification.style.display = 'block';
+                                    }
+                                } catch (error) {
+                                    console.error('Error searching EAN:', error);
+                                } finally {
+                                    if (eanLoading) eanLoading.style.display = 'none';
+                                }
+                            }
                         });
                     }
                     
@@ -3805,117 +3393,74 @@ setupExportDataCount();
                         form.addEventListener('submit', async function(e) {
                             e.preventDefault();
                             
-                            // Validate form
-                            if (!locationField || !locationField.value) {
-                                showToast('Harap masukkan lokasi!', 'error');
+                            const location = locationField ? locationField.value.trim() : '';
+                            const ean = eanField ? eanField.value.trim() : '';
+                            const sku = skuField ? skuField.value.trim() : '';
+                            const description = descriptionField ? descriptionField.value.trim() : '';
+                            const traceId = traceIdField ? traceIdField.value.trim() : '';
+                            const countType = countTypeField ? countTypeField.value : '1stCount';
+                            const qty = qtyField ? parseInt(qtyField.value) || 0 : 0;
+                            const remark = remarkField ? remarkField.value.trim() : '';
+                            
+                            if (!location || !ean || !sku) {
+                                showToast('Lokasi, EAN, dan SKU harus diisi', 'error');
                                 return;
                             }
                             
-                            if (!eanField || !eanField.value) {
-                                showToast('Harap masukkan EAN!', 'error');
+                            if (qty < 0) {
+                                showToast('Qty tidak boleh negatif', 'error');
                                 return;
                             }
                             
-                            if (!qtyField || !qtyField.value) {
-                                showToast('Harap isi nilai Qty!', 'error');
+                            if (notification && notification.style.display === 'block' && !remark) {
+                                showToast('Harap isi keterangan (remark) karena data tidak ditemukan di inventory', 'error');
                                 return;
                             }
                             
                             try {
-                                // Check if data exists in inventory data
-                                const location = locationField.value;
-                                const ean = eanField.value;
-                                const traceId = traceIdField ? traceIdField.value : '';
-                                const inventoryData = await storageManager.getInventory();
-                                
-                                const existsInInventory = inventoryData.some(item => 
-                                    item.locationId === location && 
-                                    item.sku === ean && 
-                                    item.traceId === traceId
-                                );
-                                
-                                if (!existsInInventory && (!remarkField || !remarkField.value)) {
-                                    showToast('Data tidak ditemukan di inventory. Harap isi remark sebagai temuan.', 'error');
-                                    return;
-                                }
-                                
-                                // Check if count already exists for this type
-                                const countType = countTypeField ? countTypeField.value : '';
-                                const cycleCountData = await storageManager.getCycleCount();
-                                
-                                const existingCountIndex = cycleCountData.findIndex(item => 
-                                    item.location === location && 
-                                    item.ean === ean && 
-                                    item.traceId === traceId && 
-                                    item.countType === countType
-                                );
-                                
-                                // Create form data object
-                                const formData = {
-                                    location: location,
-                                    ean: ean,
-                                    sku: skuField ? skuField.value : '',
-                                    description: descriptionField ? descriptionField.value : '',
-                                    traceId: traceId,
-                                    countType: countType,
-                                    qty: qtyField ? qtyField.value : '',
-                                    remark: remarkField ? remarkField.value : '',
+                                const countData = {
+                                    location,
+                                    ean,
+                                    sku,
+                                    description,
+                                    traceId,
+                                    countType,
+                                    qty,
+                                    remark,
                                     timestamp: new Date().toISOString()
                                 };
                                 
-                                // If exists, update the ID
-                                if (existingCountIndex !== -1) {
-                                    formData.id = cycleCountData[existingCountIndex].id;
+                                await storageManager.saveCycleCount(countData);
+                                showToast('Data count berhasil disimpan!');
+                                
+                                // Auto-sync to GitHub if enabled
+                                const githubConfig = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
+                                if (autoSyncToggle && autoSyncToggle.checked && githubConfig.autoSyncEnabled) {
+                                    const cycleCountData = await storageManager.getCycleCount();
+                                    await syncDataWithGithub('cycle_count', cycleCountData);
                                 }
                                 
-                                // Save the data
-                                await storageManager.saveCycleCount(formData);
-                                
-                                // Show success notification
-                                showToast('Data cycle count berhasil disimpan!');
-                                
-                                // Auto-sync to GitHub after saving if enabled
-                                if (storageManager.settings.enableGitHubSync) {
-                                    autoSyncToGitHub();
-                                }
-                                
-                                // Reset form but keep location
-                                const currentLocation = locationField.value;
-                                form.reset();
-                                locationField.value = currentLocation;
-                                
-                                // Clear EAN and qty fields specifically
+                                // Reset form
                                 if (eanField) eanField.value = '';
+                                if (skuField) skuField.value = '';
+                                if (descriptionField) descriptionField.value = '';
+                                if (traceIdField) traceIdField.value = '';
                                 if (qtyField) qtyField.value = '';
-                                
-                                // Remove readonly attribute if it was set
-                                if (qtyField) qtyField.removeAttribute('readonly');
-                                
+                                if (remarkField) remarkField.value = '';
                                 if (notification) notification.style.display = 'none';
-                                if (countSavedNotification) countSavedNotification.style.display = 'none';
                                 
-                                // Set focus back to EAN field for next input
+                                // Focus on EAN field for next entry
                                 if (eanField) eanField.focus();
-                                
-                                // Clear current items
-                                currentLocationItems = [];
-                                if (navigationContainer) navigationContainer.style.display = 'none';
-                                
-                                // Update current location display
-                                renderCurrentLocationSKUCount(currentLocation);
                             } catch (error) {
-                                console.error('Error saving cycle count:', error);
+                                console.error('Error saving count data:', error);
                                 showToast('Error menyimpan data: ' + error.message, 'error');
                             }
                         });
                     }
                     
-                    // Storage status functionality
+                    // Storage status functions
                     if (refreshStorageStatsBtn) {
-                        refreshStorageStatsBtn.addEventListener('click', async function() {
-                            await renderStorageStatus();
-                            showToast('Status penyimpanan diperbarui');
-                        });
+                        refreshStorageStatsBtn.addEventListener('click', renderStorageStatus);
                     }
                     
                     if (clearAllDataBtn) {
@@ -3923,10 +3468,10 @@ setupExportDataCount();
                             if (confirm('Apakah Anda yakin ingin menghapus SEMUA data? Tindakan ini tidak dapat dibatalkan!')) {
                                 try {
                                     await storageManager.clearAllData();
-                                    showToast('Semua data berhasil dihapus');
+                                    showToast('Semua data berhasil dihapus!');
                                     await renderStorageStatus();
                                     
-                                    // Refresh all tables
+                                    // Refresh tables
                                     await renderDataCountTable();
                                     await renderMasterLocationData();
                                     await renderMasterEanData();
@@ -3951,121 +3496,25 @@ setupExportDataCount();
                                 storageManager.settings.enableGitHubSync = enableGitHubSync.checked;
                                 
                                 storageManager.saveSettings();
-                                showToast('Pengaturan penyimpanan berhasil disimpan');
+                                showToast('Pengaturan penyimpanan berhasil disimpan!');
                             }
                         });
                     }
                     
-                    // Initialize data tables
+                    // Initial render
+                    await renderDataCountTable();
                     await renderMasterLocationData();
                     await renderMasterEanData();
                     await renderInventoryData();
                     await renderStorageStatus();
                     
-                    // Load last sync info
-                    loadLastSyncInfo();
-                    
+                    showToast(`Selamat datang, ${username}! Aplikasi siap digunakan.`);
                 } catch (error) {
-                    console.error('Error in initApp:', error);
-                    showToast('Terjadi kesalahan dalam inisialisasi aplikasi: ' + error.message, 'error');
+                    console.error('Error initializing app:', error);
+                    showToast('Terjadi kesalahan saat memuat aplikasi. Silakan refresh halaman.', 'error');
                 }
             }
         });
     </script>
-    <!-- Modal untuk Tambah Data Master Location -->
-<div class="modal fade" id="addMasterLocationModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Tambah Data Master Location</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="addMasterLocationForm">
-                    <div class="mb-3">
-                        <label for="addValidationCode" class="form-label">Validation Code</label>
-                        <input type="text" class="form-control" id="addValidationCode" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="addLocation" class="form-label">Location</label>
-                        <input type="text" class="form-control" id="addLocation" required>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                <button type="button" class="btn btn-primary" id="saveMasterLocationBtn">Simpan</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Modal untuk Tambah Data Master EAN -->
-<div class="modal fade" id="addMasterEanModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Tambah Data Master EAN</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="addMasterEanForm">
-                    <div class="mb-3">
-                        <label for="addEan" class="form-label">EAN</label>
-                        <input type="text" class="form-control" id="addEan" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="addSku" class="form-label">SKU</label>
-                        <input type="text" class="form-control" id="addSku" required>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                <button type="button" class="btn btn-primary" id="saveMasterEanBtn">Simpan</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Modal untuk Tambah Data Inventory -->
-<div class="modal fade" id="addInventoryModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Tambah Data Inventory</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="addInventoryForm">
-                    <div class="mb-3">
-                        <label for="addLocationId" class="form-label">Location ID</label>
-                        <input type="text" class="form-control" id="addLocationId" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="addSkuInventory" class="form-label">SKU</label>
-                        <input type="text" class="form-control" id="addSkuInventory" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="addSkuDescrL" class="form-label">SKU Description</label>
-                        <input type="text" class="form-control" id="addSkuDescrL">
-                    </div>
-                    <div class="mb-3">
-                        <label for="addTraceId" class="form-label">Trace ID</label>
-                        <input type="text" class="form-control" id="addTraceId">
-                    </div>
-                    <div class="mb-3">
-                        <label for="addQtyOnHand" class="form-label">QTY On Hand</label>
-                        <input type="number" class="form-control" id="addQtyOnHand">
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                <button type="button" class="btn btn-primary" id="saveInventoryBtn">Simpan</button>
-            </div>
-        </div>
-    </div>
-</div>
 </body>
 </html>
