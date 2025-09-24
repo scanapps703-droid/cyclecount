@@ -886,7 +886,10 @@
                     <!-- GitHub Sync Buttons for Data Count -->
                     <div class="sync-buttons">
                         <button type="button" class="btn btn-primary" id="sync-cyclecount">
-                            <i class="fas fa-sync-alt"></i> Sync Data Cycle Count
+                            <i class="fas fa-sync-alt"></i> Sync Data Cycle Count ke GitHub
+                        </button>
+                        <button type="button" class="btn btn-info" id="sync-from-github-cyclecount">
+                            <i class="fas fa-download"></i> Sync dari GitHub
                         </button>
                     </div>
                     <div class="progress" id="sync-cyclecount-progress" style="display: none;">
@@ -954,7 +957,10 @@
                     <!-- GitHub Sync Buttons for Master Data Lokasi -->
                     <div class="sync-buttons">
                         <button type="button" class="btn btn-primary" id="sync-master-location">
-                            <i class="fas fa-sync-alt"></i> Sync Data Master Lokasi
+                            <i class="fas fa-sync-alt"></i> Sync Data Master Lokasi ke GitHub
+                        </button>
+                        <button type="button" class="btn btn-info" id="sync-from-github-master-location">
+                            <i class="fas fa-download"></i> Sync dari GitHub
                         </button>
                     </div>
                     <div class="progress" id="sync-master-location-progress" style="display: none;">
@@ -1026,7 +1032,10 @@
                     <!-- GitHub Sync Buttons for Master Data EAN -->
                     <div class="sync-buttons">
                         <button type="button" class="btn btn-primary" id="sync-master-ean">
-                            <i class="fas fa-sync-alt"></i> Sync Data Master EAN
+                            <i class="fas fa-sync-alt"></i> Sync Data Master EAN ke GitHub
+                        </button>
+                        <button type="button" class="btn btn-info" id="sync-from-github-master-ean">
+                            <i class="fas fa-download"></i> Sync dari GitHub
                         </button>
                     </div>
                     <div class="progress" id="sync-master-ean-progress" style="display: none;">
@@ -1098,7 +1107,10 @@
                     <!-- GitHub Sync Buttons for Inventory Data -->
                     <div class="sync-buttons">
                         <button type="button" class="btn btn-primary" id="sync-inventory">
-                            <i class="fas fa-sync-alt"></i> Sync Data Inventory
+                            <i class="fas fa-sync-alt"></i> Sync Data Inventory ke GitHub
+                        </button>
+                        <button type="button" class="btn btn-info" id="sync-from-github-inventory">
+                            <i class="fas fa-download"></i> Sync dari GitHub
                         </button>
                     </div>
                     <div class="progress" id="sync-inventory-progress" style="display: none;">
@@ -1219,6 +1231,9 @@
                         <button type="button" class="btn btn-primary" id="save-github-config">
                             <i class="fas fa-save"></i> Simpan Konfigurasi
                         </button>
+                        <button type="button" class="btn btn-info ms-2" id="test-github-connection">
+                            <i class="fas fa-plug"></i> Test Koneksi
+                        </button>
 
                         <div class="mt-3" id="github-connection-test-result"></div>
                     </div>
@@ -1317,6 +1332,245 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // ==============================
+        // GITHUB SYNC MANAGER
+        // ==============================
+        
+        class GitHubSyncManager {
+            constructor(storageManager, userKey) {
+                this.storageManager = storageManager;
+                this.userKey = userKey;
+                this.config = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
+            }
+
+            async getFileSha(owner, repo, path, branch = 'main') {
+                try {
+                    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
+                    const response = await fetch(url, {
+                        headers: {
+                            'Authorization': `token ${this.config.token}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+
+                    if (response.status === 200) {
+                        const fileData = await response.json();
+                        return fileData.sha;
+                    } else if (response.status === 404) {
+                        return null; // File doesn't exist yet
+                    } else {
+                        throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+                    }
+                } catch (error) {
+                    console.error('Error getting file SHA:', error);
+                    throw error;
+                }
+            }
+
+            async uploadToGitHub(path, data) {
+                if (!this.config.token || !this.config.owner || !this.config.repo) {
+                    throw new Error('GitHub configuration incomplete');
+                }
+
+                try {
+                    const content = JSON.stringify(data, null, 2);
+                    const contentBase64 = btoa(unescape(encodeURIComponent(content)));
+                    const branch = this.config.branch || 'main';
+
+                    // Get SHA if file exists
+                    const sha = await this.getFileSha(this.config.owner, this.config.repo, path, branch);
+
+                    const url = `https://api.github.com/repos/${this.config.owner}/${this.config.repo}/contents/${path}`;
+                    const body = {
+                        message: `Update ${path} via CycleCount App - ${new Date().toLocaleString('id-ID')}`,
+                        content: contentBase64,
+                        branch: branch
+                    };
+
+                    if (sha) {
+                        body.sha = sha;
+                    }
+
+                    const response = await fetch(url, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `token ${this.config.token}`,
+                            'Accept': 'application/vnd.github.v3+json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(body)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(`GitHub API error: ${response.status} - ${errorData.message || response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    console.log(`Successfully uploaded ${path} to GitHub`, result);
+                    return result;
+                } catch (error) {
+                    console.error('Error uploading to GitHub:', error);
+                    throw error;
+                }
+            }
+
+            async downloadFromGitHub(path) {
+                if (!this.config.token || !this.config.owner || !this.config.repo) {
+                    throw new Error('GitHub configuration incomplete');
+                }
+
+                try {
+                    const branch = this.config.branch || 'main';
+                    const url = `https://api.github.com/repos/${this.config.owner}/${this.config.repo}/contents/${path}?ref=${branch}`;
+                    
+                    const response = await fetch(url, {
+                        headers: {
+                            'Authorization': `token ${this.config.token}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+
+                    if (response.status === 404) {
+                        return null; // File doesn't exist
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+                    }
+
+                    const fileData = await response.json();
+                    const content = decodeURIComponent(escape(atob(fileData.content)));
+                    return JSON.parse(content);
+                } catch (error) {
+                    console.error('Error downloading from GitHub:', error);
+                    throw error;
+                }
+            }
+
+            async syncDataWithGithub(dataType, data) {
+                try {
+                    const filename = this.getFilenameForDataType(dataType);
+                    await this.uploadToGitHub(filename, data);
+                    return true;
+                } catch (error) {
+                    console.error(`Error syncing ${dataType} with GitHub:`, error);
+                    throw error;
+                }
+            }
+
+            async syncAllDataToGitHub() {
+                try {
+                    showToast('Memulai sinkronisasi ke GitHub...', 'info');
+                    
+                    const allData = await this.storageManager.exportAllData();
+                    
+                    await this.syncDataWithGithub('cycle_count', allData.cycleCount);
+                    await this.syncDataWithGithub('master_location', allData.masterLocation);
+                    await this.syncDataWithGithub('master_ean', allData.masterEan);
+                    await this.syncDataWithGithub('inventory_data', allData.inventory);
+                    
+                    // Update last sync timestamps
+                    this.updateLastSyncTimestamps();
+                    
+                    showToast('Sinkronisasi ke GitHub berhasil!');
+                    return true;
+                } catch (error) {
+                    console.error('Error during GitHub sync:', error);
+                    showToast(`Error sinkronisasi GitHub: ${error.message}`, 'error');
+                    throw error;
+                }
+            }
+
+            async syncFromGitHub() {
+                try {
+                    showToast('Memuat data dari GitHub...', 'info');
+                    
+                    const cycleCountData = await this.downloadFromGitHub('cycle_count.json') || [];
+                    const masterLocationData = await this.downloadFromGitHub('master_location.json') || [];
+                    const masterEanData = await this.downloadFromGitHub('master_ean.json') || [];
+                    const inventoryData = await this.downloadFromGitHub('inventory_data.json') || [];
+                    
+                    // Import data to storage
+                    if (cycleCountData.length > 0) {
+                        for (const item of cycleCountData) {
+                            await this.storageManager.saveCycleCount(item);
+                        }
+                    }
+                    
+                    if (masterLocationData.length > 0) {
+                        await this.storageManager.saveMasterLocation(masterLocationData);
+                    }
+                    
+                    if (masterEanData.length > 0) {
+                        await this.storageManager.saveMasterEan(masterEanData);
+                    }
+                    
+                    if (inventoryData.length > 0) {
+                        await this.storageManager.saveInventory(inventoryData);
+                    }
+                    
+                    showToast('Data dari GitHub berhasil dimuat!');
+                    return true;
+                } catch (error) {
+                    console.error('Error syncing from GitHub:', error);
+                    showToast(`Error memuat data dari GitHub: ${error.message}`, 'error');
+                    throw error;
+                }
+            }
+
+            getFilenameForDataType(dataType) {
+                const filenames = {
+                    'cycle_count': 'cycle_count.json',
+                    'master_location': 'master_location.json',
+                    'master_ean': 'master_ean.json',
+                    'inventory_data': 'inventory_data.json'
+                };
+                
+                return filenames[dataType] || `${dataType}.json`;
+            }
+
+            updateLastSyncTimestamps() {
+                const now = new Date().toLocaleString('id-ID');
+                
+                // Update UI elements
+                const elements = {
+                    'last-sync-cyclecount': now,
+                    'last-sync-master-location': now,
+                    'last-sync-master-ean': now,
+                    'last-sync-inventory': now
+                };
+                
+                Object.keys(elements).forEach(id => {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.textContent = now;
+                    }
+                });
+                
+                // Save to localStorage
+                localStorage.setItem(`lastSync_${this.userKey}`, now);
+            }
+
+            loadLastSyncTimestamps() {
+                const lastSync = localStorage.getItem(`lastSync_${this.userKey}`) || 'Belum pernah';
+                
+                const elements = [
+                    'last-sync-cyclecount',
+                    'last-sync-master-location',
+                    'last-sync-master-ean',
+                    'last-sync-inventory'
+                ];
+                
+                elements.forEach(id => {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.textContent = lastSync;
+                    }
+                });
+            }
+        }
+
         // ==============================
         // HYBRID STORAGE MANAGER
         // ==============================
@@ -2024,6 +2278,7 @@
         let currentUser = null;
         let userKey = null;
         let storageManager = null;
+        let githubSyncManager = null;
         let autoSyncInterval = null;
         
         function showToast(message, type = 'success') {
@@ -2132,6 +2387,7 @@
             const syncInterval = document.getElementById('sync-interval');
             const autoSyncEnabled = document.getElementById('auto-sync-enabled');
             const saveGithubConfigBtn = document.getElementById('save-github-config');
+            const testGithubConnectionBtn = document.getElementById('test-github-connection');
             
             if (!githubToken || !githubOwner || !githubRepo || !githubBranch || !syncInterval || !autoSyncEnabled || !saveGithubConfigBtn) return;
             
@@ -2160,6 +2416,12 @@
                 };
                 
                 localStorage.setItem(`githubConfig_${userKey}`, JSON.stringify(config));
+                
+                // Update GitHubSyncManager config
+                if (githubSyncManager) {
+                    githubSyncManager.config = config;
+                }
+                
                 showToast('Konfigurasi GitHub berhasil disimpan!');
                 
                 testGithubConnection(config);
@@ -2172,6 +2434,10 @@
                 if (config.autoSyncEnabled) {
                     startAutoSync(config.syncInterval);
                 }
+            });
+            
+            testGithubConnectionBtn.addEventListener('click', function() {
+                testGithubConnection();
             });
         }
         
@@ -2437,10 +2703,15 @@
         function startAutoSync(intervalMinutes) {
             if (autoSyncInterval) {
                 clearInterval(autoSyncInterval);
+                autoSyncInterval = null;
             }
-            
+
+            // Initial sync
+            autoSyncToGitHub();
+
+            // Set up interval
             autoSyncInterval = setInterval(() => {
-                showToast('Memulai sinkronisasi otomatis...', 'info');
+                console.log(`Auto-sync interval triggered (${intervalMinutes} minutes)`);
                 autoSyncToGitHub();
             }, intervalMinutes * 60 * 1000);
         }
@@ -2450,36 +2721,18 @@
             if (!config.autoSyncEnabled || !storageManager.settings.enableGitHubSync) {
                 return;
             }
-            
+
             if (!config.token || !config.owner || !config.repo) {
                 return;
             }
-            
-            showToast('Memulai sinkronisasi otomatis...', 'info');
-            
+
             try {
-                const allData = await storageManager.exportAllData();
-                
-                await syncDataWithGithub('cycle_count', allData.cycleCount);
-                await syncDataWithGithub('master_location', allData.masterLocation);
-                await syncDataWithGithub('master_ean', allData.masterEan);
-                await syncDataWithGithub('inventory_data', allData.inventory);
-                
-                showToast('Sinkronisasi otomatis berhasil!');
+                console.log('Starting auto-sync to GitHub...');
+                await githubSyncManager.syncAllDataToGitHub();
+                console.log('Auto-sync completed successfully');
             } catch (error) {
                 console.error('Error during auto-sync:', error);
-                showToast('Error selama sinkronisasi otomatis: ' + error.message, 'error');
             }
-        }
-        
-        async function syncDataWithGithub(dataType, data) {
-            // Simulate API call
-            return new Promise((resolve) => {
-                setTimeout(() => {
-                    console.log(`Syncing ${dataType} with GitHub`, data);
-                    resolve(true);
-                }, 1000);
-            });
         }
         
         async function renderStorageStatus() {
@@ -2696,11 +2949,29 @@
             document.getElementById('sync-master-location').addEventListener('click', async function() {
                 try {
                     const data = await storageManager.getMasterLocation();
-                    await syncDataWithGithub('master_location', data);
+                    await githubSyncManager.syncDataWithGithub('master_location', data);
+                    githubSyncManager.updateLastSyncTimestamps();
                     showToast('Data Master Lokasi berhasil disinkronisasi!');
                 } catch (error) {
                     console.error('Error syncing master location data:', error);
                     showToast('Error sinkronisasi data: ' + error.message, 'error');
+                }
+            });
+            
+            // Sync from GitHub for Master Location
+            document.getElementById('sync-from-github-master-location').addEventListener('click', async function() {
+                try {
+                    const data = await githubSyncManager.downloadFromGitHub('master_location.json') || [];
+                    if (data.length > 0) {
+                        await storageManager.saveMasterLocation(data);
+                        await renderMasterLocationData();
+                        showToast('Data Master Lokasi berhasil dimuat dari GitHub!');
+                    } else {
+                        showToast('Tidak ada data Master Lokasi di GitHub', 'info');
+                    }
+                } catch (error) {
+                    console.error('Error syncing master location from GitHub:', error);
+                    showToast('Error memuat data dari GitHub: ' + error.message, 'error');
                 }
             });
         }
@@ -2820,11 +3091,29 @@
             document.getElementById('sync-master-ean').addEventListener('click', async function() {
                 try {
                     const data = await storageManager.getMasterEan();
-                    await syncDataWithGithub('master_ean', data);
+                    await githubSyncManager.syncDataWithGithub('master_ean', data);
+                    githubSyncManager.updateLastSyncTimestamps();
                     showToast('Data Master EAN berhasil disinkronisasi!');
                 } catch (error) {
                     console.error('Error syncing master EAN data:', error);
                     showToast('Error sinkronisasi data: ' + error.message, 'error');
+                }
+            });
+            
+            // Sync from GitHub for Master EAN
+            document.getElementById('sync-from-github-master-ean').addEventListener('click', async function() {
+                try {
+                    const data = await githubSyncManager.downloadFromGitHub('master_ean.json') || [];
+                    if (data.length > 0) {
+                        await storageManager.saveMasterEan(data);
+                        await renderMasterEanData();
+                        showToast('Data Master EAN berhasil dimuat dari GitHub!');
+                    } else {
+                        showToast('Tidak ada data Master EAN di GitHub', 'info');
+                    }
+                } catch (error) {
+                    console.error('Error syncing master EAN from GitHub:', error);
+                    showToast('Error memuat data dari GitHub: ' + error.message, 'error');
                 }
             });
         }
@@ -2954,11 +3243,29 @@
             document.getElementById('sync-inventory').addEventListener('click', async function() {
                 try {
                     const data = await storageManager.getInventory();
-                    await syncDataWithGithub('inventory_data', data);
+                    await githubSyncManager.syncDataWithGithub('inventory_data', data);
+                    githubSyncManager.updateLastSyncTimestamps();
                     showToast('Data Inventory berhasil disinkronisasi!');
                 } catch (error) {
                     console.error('Error syncing inventory data:', error);
                     showToast('Error sinkronisasi data: ' + error.message, 'error');
+                }
+            });
+            
+            // Sync from GitHub for Inventory
+            document.getElementById('sync-from-github-inventory').addEventListener('click', async function() {
+                try {
+                    const data = await githubSyncManager.downloadFromGitHub('inventory_data.json') || [];
+                    if (data.length > 0) {
+                        await storageManager.saveInventory(data);
+                        await renderInventoryData();
+                        showToast('Data Inventory berhasil dimuat dari GitHub!');
+                    } else {
+                        showToast('Tidak ada data Inventory di GitHub', 'info');
+                    }
+                } catch (error) {
+                    console.error('Error syncing inventory from GitHub:', error);
+                    showToast('Error memuat data dari GitHub: ' + error.message, 'error');
                 }
             });
         }
@@ -2969,11 +3276,31 @@
             document.getElementById('sync-cyclecount').addEventListener('click', async function() {
                 try {
                     const data = await storageManager.getCycleCount();
-                    await syncDataWithGithub('cycle_count', data);
+                    await githubSyncManager.syncDataWithGithub('cycle_count', data);
+                    githubSyncManager.updateLastSyncTimestamps();
                     showToast('Data Cycle Count berhasil disinkronisasi!');
                 } catch (error) {
                     console.error('Error syncing cycle count data:', error);
                     showToast('Error sinkronisasi data: ' + error.message, 'error');
+                }
+            });
+            
+            // Sync from GitHub for Cycle Count
+            document.getElementById('sync-from-github-cyclecount').addEventListener('click', async function() {
+                try {
+                    const data = await githubSyncManager.downloadFromGitHub('cycle_count.json') || [];
+                    if (data.length > 0) {
+                        for (const item of data) {
+                            await storageManager.saveCycleCount(item);
+                        }
+                        await renderDataCountTable();
+                        showToast('Data Cycle Count berhasil dimuat dari GitHub!');
+                    } else {
+                        showToast('Tidak ada data Cycle Count di GitHub', 'info');
+                    }
+                } catch (error) {
+                    console.error('Error syncing cycle count from GitHub:', error);
+                    showToast('Error memuat data dari GitHub: ' + error.message, 'error');
                 }
             });
             
@@ -3169,6 +3496,10 @@
                     storageManager = new HybridStorageManager(userKey);
                     await storageManager.initPromise;
                     
+                    // Initialize GitHubSyncManager
+                    githubSyncManager = new GitHubSyncManager(storageManager, userKey);
+                    githubSyncManager.loadLastSyncTimestamps();
+                    
                     await initApp();
                     
                     setTimeout(testGithubConnection, 1000);
@@ -3183,6 +3514,7 @@
                 currentUser = null;
                 userKey = null;
                 storageManager = null;
+                githubSyncManager = null;
                 if (loginContainer) loginContainer.style.display = 'flex';
                 if (appContainer) appContainer.style.display = 'none';
             }
@@ -3437,7 +3769,7 @@
                                 const githubConfig = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
                                 if (autoSyncToggle && autoSyncToggle.checked && githubConfig.autoSyncEnabled) {
                                     const cycleCountData = await storageManager.getCycleCount();
-                                    await syncDataWithGithub('cycle_count', cycleCountData);
+                                    await githubSyncManager.syncDataWithGithub('cycle_count', cycleCountData);
                                 }
                                 
                                 // Reset form
