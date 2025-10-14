@@ -743,7 +743,7 @@
                 <li>
                     <a href="#inventory-balance" data-tab="inventory-balance">
                         <i class="fas fa-cubes"></i>
-                        <span class="menu-text">inventory_data</span>
+                        <span class="menu-text">Inventory Balance (IB)</span>
                     </a>
                 </li>
                 <li>
@@ -782,13 +782,14 @@
                         <div class="row mb-4">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="location" class="form-label">Lokasi</label>
+                                    <label for="location" class="form-label">Validation Code</label>
                                     <div class="input-group">
-                                        <input type="text" class="form-control" id="location" name="location" required placeholder="Masukkan kode lokasi">
+                                        <input type="text" class="form-control" id="location" name="location" required placeholder="Masukkan kode validasi lokasi">
                                         <button type="button" class="btn btn-primary" id="save-location-btn">
                                             <i class="fas fa-save"></i> Simpan
                                         </button>
                                     </div>
+                                    <div class="form-text">Masukkan Validation Code, akan otomatis berubah menjadi Location Code</div>
                                 </div>
                                 
                                 <!-- Current Location Display -->
@@ -1104,7 +1105,7 @@
             <div class="tab-content" id="inventory-balance-tab" style="display: none;">
                 <div class="section-card">
                     <h2 class="section-title">
-                        <i class="fas fa-cubes"></i> inventory_data Management
+                        <i class="fas fa-cubes"></i> Inventory Balance (IB) Management
                     </h2>
                     
                     <!-- GitHub Sync Buttons for Inventory Data -->
@@ -3735,10 +3736,8 @@
                     // Transform data for Excel
                     const excelData = data.map(item => {
                         const date = new Date(item.timestamp);
-                        const formattedDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-                        
                         return {
-                            'Tanggal': formattedDate,
+                            'Tanggal': date.toLocaleString('id-ID'),
                             'Lokasi': item.location,
                             'EAN': item.ean,
                             'SKU': item.sku,
@@ -3748,7 +3747,7 @@
                         };
                     });
                     
-                    const success = downloadAsExcel(excelData, 'cycle_count_data.xlsx');
+                    const success = downloadAsExcel(excelData, 'cycle_count.xlsx');
                     if (success) {
                         showToast('Data Cycle Count berhasil diexport!');
                     } else {
@@ -3764,7 +3763,7 @@
             document.getElementById('delete-selected-btn').addEventListener('click', async function() {
                 const selectedCheckboxes = document.querySelectorAll('.data-checkbox:checked');
                 if (selectedCheckboxes.length === 0) {
-                    showToast('Tidak ada data yang dipilih untuk dihapus', 'info');
+                    showToast('Tidak ada data yang dipilih', 'info');
                     return;
                 }
                 
@@ -3772,13 +3771,14 @@
                     return;
                 }
                 
+                const idsToDelete = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-id'));
+                
                 try {
-                    const idsToDelete = Array.from(selectedCheckboxes).map(checkbox => checkbox.getAttribute('data-id'));
                     await storageManager.deleteMultipleCycleCount(idsToDelete);
                     await renderDataCountTable();
                     showToast(`${idsToDelete.length} data berhasil dihapus`);
                 } catch (error) {
-                    console.error('Error deleting selected data count:', error);
+                    console.error('Error deleting selected data count items:', error);
                     showToast('Error menghapus data: ' + error.message, 'error');
                 }
             });
@@ -3786,9 +3786,7 @@
             // Select All Checkbox
             document.getElementById('select-all').addEventListener('change', function() {
                 const checkboxes = document.querySelectorAll('.data-checkbox');
-                checkboxes.forEach(checkbox => {
-                    checkbox.checked = this.checked;
-                });
+                checkboxes.forEach(cb => cb.checked = this.checked);
             });
             
             // Filter Data Count
@@ -3797,84 +3795,431 @@
             });
         }
         
-        document.addEventListener('DOMContentLoaded', function() {
-            // Login functionality
-            const loginContainer = document.getElementById('login-container');
-            const appContainer = document.getElementById('app-container');
-            const loginForm = document.getElementById('login-form');
-            const logoutBtn = document.getElementById('logout-btn');
-            const userWelcome = document.getElementById('user-welcome');
+        // ==============================
+        // LOGIKA LOCATION VALIDATION
+        // ==============================
+        
+        // Fungsi untuk mencari lokasi berdasarkan validation code
+        async function findLocationByValidationCode(validationCode) {
+            try {
+                const masterLocationData = await storageManager.getMasterLocation();
+                return masterLocationData.find(loc => loc.validationCode === validationCode);
+            } catch (error) {
+                console.error('Error searching for location:', error);
+                return null;
+            }
+        }
+        
+        // Event listener untuk input location
+        document.getElementById('location').addEventListener('input', async function() {
+            const validationCode = this.value.trim();
+            
+            if (validationCode) {
+                try {
+                    const foundLocation = await findLocationByValidationCode(validationCode);
+                    
+                    if (foundLocation) {
+                        // Jika ditemukan, ganti nilai field dengan location code
+                        this.value = foundLocation.location;
+                        
+                        // Update tampilan dengan informasi lokasi
+                        const currentLocationDisplay = document.getElementById('current-location-display');
+                        const currentLocationName = document.getElementById('current-location-name');
+                        const currentLocationSkuCount = document.getElementById('current-location-sku-count');
+                        
+                        if (currentLocationDisplay && currentLocationName) {
+                            currentLocationName.textContent = foundLocation.location;
+                            currentLocationDisplay.style.display = 'block';
+                        }
+                        
+                        // Hitung jumlah SKU di lokasi ini
+                        try {
+                            const inventoryData = await storageManager.getInventory();
+                            const skuCount = inventoryData.filter(item => item.locationId === foundLocation.location).length;
+                            
+                            if (currentLocationSkuCount) {
+                                currentLocationSkuCount.textContent = skuCount;
+                            }
+                        } catch (error) {
+                            console.error('Error counting SKUs:', error);
+                            if (currentLocationSkuCount) {
+                                currentLocationSkuCount.textContent = 'Error';
+                            }
+                        }
+                        
+                        // Simpan lokasi saat ini di sessionStorage
+                        sessionStorage.setItem('currentLocation', foundLocation.location);
+                        showToast(`Lokasi berhasil diubah ke: ${foundLocation.location}`);
+                    }
+                } catch (error) {
+                    console.error('Error processing location input:', error);
+                }
+            }
+        });
+        
+        // Event listener untuk tombol save location
+        document.getElementById('save-location-btn').addEventListener('click', function() {
+            const locationInput = document.getElementById('location');
+            const locationCode = locationInput.value.trim();
+            
+            if (locationCode) {
+                // Simpan lokasi saat ini di sessionStorage
+                sessionStorage.setItem('currentLocation', locationCode);
+                
+                // Update tampilan dengan informasi lokasi
+                const currentLocationDisplay = document.getElementById('current-location-display');
+                const currentLocationName = document.getElementById('current-location-name');
+                const currentLocationSkuCount = document.getElementById('current-location-sku-count');
+                
+                if (currentLocationDisplay && currentLocationName) {
+                    currentLocationName.textContent = locationCode;
+                    currentLocationDisplay.style.display = 'block';
+                }
+                
+                // Hitung jumlah SKU di lokasi ini
+                (async () => {
+                    try {
+                        const inventoryData = await storageManager.getInventory();
+                        const skuCount = inventoryData.filter(item => item.locationId === locationCode).length;
+                        
+                        if (currentLocationSkuCount) {
+                            currentLocationSkuCount.textContent = skuCount;
+                        }
+                    } catch (error) {
+                        console.error('Error counting SKUs:', error);
+                        if (currentLocationSkuCount) {
+                            currentLocationSkuCount.textContent = 'Error';
+                        }
+                    }
+                })();
+                
+                showToast(`Lokasi berhasil disimpan: ${locationCode}`);
+            } else {
+                showToast('Masukkan kode lokasi terlebih dahulu', 'error');
+            }
+        });
+        
+        // ==============================
+        // LOGIKA EAN VALIDATION
+        // ==============================
+        
+        // Event listener untuk input EAN - DIPERBAIKI
+        document.getElementById('ean').addEventListener('input', async function() {
+            const ean = this.value.trim();
+            const loadingIndicator = document.getElementById('ean-loading');
+            
+            if (ean) {
+                if (loadingIndicator) loadingIndicator.style.display = 'block';
+                
+                try {
+                    // Ambil currentLocation dari sessionStorage
+                    const currentLocation = sessionStorage.getItem('currentLocation');
+                    
+                    if (currentLocation) {
+                        // Cari master EAN
+                        const masterEanData = await storageManager.getMasterEan();
+                        const masterEan = masterEanData.find(item => item.ean === ean);
+                        
+                        if (masterEan) {
+                            document.getElementById('sku').value = masterEan.sku || '';
+                            
+                            // Cari data inventory berdasarkan location dan sku
+                            const inventoryData = await storageManager.getInventory();
+                            const inventoryItem = inventoryData.find(item => 
+                                item.locationId === currentLocation && item.sku === masterEan.sku
+                            );
+                            
+                            if (inventoryItem) {
+                                document.getElementById('description').value = inventoryItem.skuDescrL || '';
+                                document.getElementById('traceId').value = inventoryItem.traceId || '';
+                                document.getElementById('notification').style.display = 'none';
+                                
+                                // Cek apakah count sudah ada untuk tipe count ini
+                                const countType = document.getElementById('countType').value;
+                                const cycleCountData = await storageManager.getCycleCount();
+                                const existingCount = cycleCountData.find(item => 
+                                    item.location === currentLocation && 
+                                    item.ean === ean && 
+                                    item.countType === countType
+                                );
+                                
+                                if (existingCount) {
+                                    document.getElementById('count-saved').style.display = 'block';
+                                    document.getElementById('qty').value = existingCount.qty || '';
+                                    document.getElementById('remark').value = existingCount.remark || '';
+                                } else {
+                                    document.getElementById('count-saved').style.display = 'none';
+                                    document.getElementById('qty').value = '';
+                                    document.getElementById('remark').value = '';
+                                }
+                            } else {
+                                // Data tidak ditemukan di inventory
+                                document.getElementById('description').value = '';
+                                document.getElementById('traceId').value = '';
+                                document.getElementById('notification').style.display = 'block';
+                                document.getElementById('count-saved').style.display = 'none';
+                                document.getElementById('qty').value = '';
+                                document.getElementById('remark').value = '';
+                            }
+                        } else {
+                            // EAN tidak ditemukan di master data
+                            document.getElementById('sku').value = '';
+                            document.getElementById('description').value = '';
+                            document.getElementById('traceId').value = '';
+                            document.getElementById('notification').style.display = 'block';
+                            document.getElementById('count-saved').style.display = 'none';
+                            document.getElementById('qty').value = '';
+                            document.getElementById('remark').value = '';
+                        }
+                    } else {
+                        // Lokasi belum dipilih
+                        showToast('Pilih lokasi terlebih dahulu', 'error');
+                        document.getElementById('sku').value = '';
+                        document.getElementById('description').value = '';
+                        document.getElementById('traceId').value = '';
+                        document.getElementById('qty').value = '';
+                        document.getElementById('remark').value = '';
+                    }
+                } catch (error) {
+                    console.error('Error processing EAN input:', error);
+                    showToast('Error memproses EAN: ' + error.message, 'error');
+                } finally {
+                    if (loadingIndicator) loadingIndicator.style.display = 'none';
+                }
+            } else {
+                // Reset fields jika EAN kosong
+                document.getElementById('sku').value = '';
+                document.getElementById('description').value = '';
+                document.getElementById('traceId').value = '';
+                document.getElementById('notification').style.display = 'none';
+                document.getElementById('count-saved').style.display = 'none';
+                document.getElementById('qty').value = '';
+                document.getElementById('remark').value = '';
+            }
+        });
+        
+        // Event listener untuk perubahan count type
+        document.getElementById('countType').addEventListener('change', async function() {
+            const ean = document.getElementById('ean').value.trim();
+            const currentLocation = sessionStorage.getItem('currentLocation');
+            
+            if (ean && currentLocation) {
+                try {
+                    const countType = this.value;
+                    const cycleCountData = await storageManager.getCycleCount();
+                    const existingCount = cycleCountData.find(item => 
+                        item.location === currentLocation && 
+                        item.ean === ean && 
+                        item.countType === countType
+                    );
+                    
+                    if (existingCount) {
+                        document.getElementById('count-saved').style.display = 'block';
+                        document.getElementById('qty').value = existingCount.qty || '';
+                        document.getElementById('remark').value = existingCount.remark || '';
+                    } else {
+                        document.getElementById('count-saved').style.display = 'none';
+                        document.getElementById('qty').value = '';
+                        document.getElementById('remark').value = '';
+                    }
+                } catch (error) {
+                    console.error('Error checking existing count:', error);
+                }
+            }
+        });
+        
+        // ==============================
+        // FORM SUBMISSION
+        // ==============================
+        
+        // Event listener untuk form submission
+        document.getElementById('cycleCountForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const currentLocation = sessionStorage.getItem('currentLocation');
+            const ean = document.getElementById('ean').value.trim();
+            const countType = document.getElementById('countType').value;
+            const qty = document.getElementById('qty').value;
+            const remark = document.getElementById('remark').value;
+            
+            if (!currentLocation) {
+                showToast('Pilih lokasi terlebih dahulu', 'error');
+                return;
+            }
+            
+            if (!ean) {
+                showToast('Masukkan EAN terlebih dahulu', 'error');
+                return;
+            }
+            
+            if (!qty) {
+                showToast('Masukkan quantity terlebih dahulu', 'error');
+                return;
+            }
+            
+            try {
+                // Cek apakah count sudah ada untuk tipe count ini
+                const cycleCountData = await storageManager.getCycleCount();
+                const existingCount = cycleCountData.find(item => 
+                    item.location === currentLocation && 
+                    item.ean === ean && 
+                    item.countType === countType
+                );
+                
+                if (existingCount && document.getElementById('count-saved').style.display === 'block') {
+                    showToast(`Count untuk ${countType} sudah disimpan sebelumnya`, 'info');
+                    return;
+                }
+                
+                // Simpan data count
+                const countData = {
+                    location: currentLocation,
+                    ean: ean,
+                    sku: document.getElementById('sku').value,
+                    countType: countType,
+                    qty: parseInt(qty),
+                    remark: remark,
+                    timestamp: new Date().toISOString()
+                };
+                
+                await storageManager.saveCycleCount(countData);
+                showToast('Data count berhasil disimpan!');
+                
+                // Reset form
+                document.getElementById('ean').value = '';
+                document.getElementById('sku').value = '';
+                document.getElementById('description').value = '';
+                document.getElementById('traceId').value = '';
+                document.getElementById('qty').value = '';
+                document.getElementById('remark').value = '';
+                document.getElementById('notification').style.display = 'none';
+                document.getElementById('count-saved').style.display = 'none';
+                
+                // Auto sync ke GitHub jika enabled
+                const githubConfig = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
+                if (githubConfig.autoSyncEnabled) {
+                    setTimeout(() => {
+                        const syncManager = new SyncManager(storageManager, githubSyncManager);
+                        syncManager.syncToGitHub('cycle_count', 
+                            document.getElementById('sync-cyclecount-progress'));
+                    }, 1000);
+                }
+            } catch (error) {
+                console.error('Error saving cycle count:', error);
+                showToast('Error menyimpan data: ' + error.message, 'error');
+            }
+        });
+        
+        // ==============================
+        // STORAGE STATUS FUNCTIONS
+        // ==============================
+        
+        function setupStorageStatusFunctions() {
+            // Refresh Storage Stats
+            document.getElementById('refresh-storage-stats').addEventListener('click', function() {
+                renderStorageStatus();
+                showToast('Status penyimpanan diperbarui');
+            });
+            
+            // Clear All Data
+            document.getElementById('clear-all-data').addEventListener('click', async function() {
+                if (confirm('Apakah Anda yakin ingin menghapus SEMUA data? Tindakan ini tidak dapat dibatalkan!')) {
+                    try {
+                        await storageManager.clearAllData();
+                        showToast('Semua data berhasil dihapus');
+                        await renderStorageStatus();
+                        await renderDataCountTable();
+                        await renderMasterLocationData();
+                        await renderMasterEanData();
+                        await renderInventoryData();
+                    } catch (error) {
+                        console.error('Error clearing all data:', error);
+                        showToast('Error menghapus data: ' + error.message, 'error');
+                    }
+                }
+            });
+            
+            // Save Storage Settings
+            document.getElementById('save-storage-settings').addEventListener('click', function() {
+                const enableIndexedDB = document.getElementById('enable-indexeddb');
+                const enableLocalStorage = document.getElementById('enable-localstorage');
+                const enableGitHubSync = document.getElementById('enable-github-sync');
+                
+                if (storageManager) {
+                    storageManager.settings.enableIndexedDB = enableIndexedDB.checked;
+                    storageManager.settings.enableLocalStorage = enableLocalStorage.checked;
+                    storageManager.settings.enableGitHubSync = enableGitHubSync.checked;
+                    
+                    storageManager.saveSettings();
+                    showToast('Pengaturan penyimpanan berhasil disimpan');
+                }
+            });
+        }
+        
+        // ==============================
+        // SIDEBAR NAVIGATION
+        // ==============================
+        
+        function setupSidebarNavigation() {
             const sidebarToggle = document.getElementById('sidebar-toggle');
             const sidebar = document.getElementById('sidebar');
             const mobileNavBackdrop = document.getElementById('mobile-nav-backdrop');
-            const masterDataMenu = document.getElementById('master-data-menu');
+            const mainContent = document.getElementById('main-content');
             
-            // Check if user is already logged in
-            const savedUser = sessionStorage.getItem('currentUser');
-            if (savedUser) {
-                try {
-                    showApp(savedUser);
-                } catch (error) {
-                    console.error('Error showing app:', error);
-                    sessionStorage.removeItem('currentUser');
-                    showLogin();
-                }
-            }
-            
-            // Login form submission
-            loginForm.addEventListener('submit', async function(e) {
-                e.preventDefault();
-                
-                const username = document.getElementById('username').value.trim();
-                const password = document.getElementById('password').value;
-                
-                if (username && password) {
-                    sessionStorage.setItem('currentUser', username);
-                    try {
-                        await showApp(username);
-                    } catch (error) {
-                        console.error('Error showing app:', error);
-                        sessionStorage.removeItem('currentUser');
-                        showToast('Terjadi kesalahan saat login. Silakan coba lagi.', 'error');
-                    }
-                } else {
-                    showToast('Harap isi username dan password', 'error');
-                }
-            });
-            
-            // Logout functionality
-            logoutBtn.addEventListener('click', function() {
-                if (autoSyncInterval) {
-                    clearInterval(autoSyncInterval);
-                    autoSyncInterval = null;
-                }
-                
-                // Reset GitHub connection status
-                resetGithubConnection();
-                
-                sessionStorage.removeItem('currentUser');
-                showLogin();
-            });
-            
-            // Toggle sidebar on mobile
-            if (sidebarToggle && sidebar && mobileNavBackdrop) {
+            if (sidebarToggle && sidebar) {
                 sidebarToggle.addEventListener('click', function() {
                     sidebar.classList.toggle('expanded');
                     mobileNavBackdrop.classList.toggle('expanded');
                 });
-                
+            }
+            
+            if (mobileNavBackdrop) {
                 mobileNavBackdrop.addEventListener('click', function() {
                     sidebar.classList.remove('expanded');
                     mobileNavBackdrop.classList.remove('expanded');
                 });
             }
             
-            // Master data menu toggle
+            // Tab navigation
+            const tabLinks = document.querySelectorAll('.sidebar-menu a[data-tab]');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            tabLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    // Update active tab in sidebar
+                    tabLinks.forEach(l => l.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Show corresponding tab content
+                    const tabId = this.getAttribute('data-tab');
+                    tabContents.forEach(content => {
+                        if (content.id === `${tabId}-tab`) {
+                            content.style.display = 'block';
+                            content.classList.add('active');
+                        } else {
+                            content.style.display = 'none';
+                            content.classList.remove('active');
+                        }
+                    });
+                    
+                    // Close sidebar on mobile
+                    if (window.innerWidth < 992) {
+                        sidebar.classList.remove('expanded');
+                        mobileNavBackdrop.classList.remove('expanded');
+                    }
+                });
+            });
+            
+            // Master data submenu
+            const masterDataMenu = document.getElementById('master-data-menu');
             if (masterDataMenu) {
                 masterDataMenu.addEventListener('click', function(e) {
                     if (e.target.tagName === 'A' && e.target.getAttribute('data-tab') === 'master-data') {
                         e.preventDefault();
                         this.classList.toggle('expanded');
+                        
                         const submenu = this.querySelector('.sidebar-submenu');
                         if (submenu) {
                             submenu.classList.toggle('expanded');
@@ -3882,451 +4227,140 @@
                     }
                 });
             }
+        }
+        
+        // ==============================
+        // LOGIN FUNCTIONALITY
+        // ==============================
+        
+        function setupLoginFunctionality() {
+            const loginForm = document.getElementById('login-form');
+            const loginContainer = document.getElementById('login-container');
+            const appContainer = document.getElementById('app-container');
+            const logoutBtn = document.getElementById('logout-btn');
+            const userWelcome = document.getElementById('user-welcome');
             
-            // Auto hide sidebar on scroll
-            let scrollTimer;
-            window.addEventListener('scroll', function() {
-                if (window.innerWidth < 992) {
-                    if (sidebar.classList.contains('expanded')) {
-                        clearTimeout(scrollTimer);
-                        scrollTimer = setTimeout(function() {
-                            sidebar.classList.remove('expanded');
-                            mobileNavBackdrop.classList.remove('expanded');
-                        }, 250);
-                    }
-                }
-            });
-            
-            // Function to show the app
-            async function showApp(username) {
-                try {
-                    currentUser = username;
-                    userKey = username;
-                    loginContainer.style.display = 'none';
-                    appContainer.style.display = 'flex';
-                    if (userWelcome) {
-                        userWelcome.textContent = `Halo, ${username}`;
-                    }
-                    
-                    storageManager = new HybridStorageManager(userKey);
-                    await storageManager.initPromise;
-                    
-                    // Initialize GitHubSyncManager
-                    githubSyncManager = new GitHubSyncManager(storageManager, userKey);
-                    githubSyncManager.loadLastSyncTimestamps();
-                    
-                    // Initialize SyncManager
-                    syncManager = new SyncManager(storageManager, githubSyncManager);
-                    
-                    await initApp();
-                    
-                    setTimeout(testGithubConnection, 1000);
-                } catch (error) {
-                    console.error('Error in showApp:', error);
-                    throw error;
-                }
-            }
-            
-            // Function to show login
-            function showLogin() {
-                currentUser = null;
-                userKey = null;
-                storageManager = null;
-                githubSyncManager = null;
-                syncManager = null;
-                if (loginContainer) loginContainer.style.display = 'flex';
-                if (appContainer) appContainer.style.display = 'none';
-            }
-            
-            // Sidebar navigation
-            const sidebarLinks = document.querySelectorAll('.sidebar-menu a');
-            const tabContents = document.querySelectorAll('.tab-content');
-            
-            sidebarLinks.forEach(link => {
-                link.addEventListener('click', function(e) {
+            if (loginForm) {
+                loginForm.addEventListener('submit', function(e) {
                     e.preventDefault();
                     
-                    const tabId = this.getAttribute('data-tab');
+                    const username = document.getElementById('username').value;
+                    const password = document.getElementById('password').value;
+                    const remember = document.getElementById('remember').checked;
                     
-                    sidebarLinks.forEach(l => l.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    if (this.closest('.sidebar-submenu')) {
-                        const parentItem = this.closest('.has-submenu');
-                        if (parentItem) {
-                            const parentLink = parentItem.querySelector('a');
-                            if (parentLink) {
-                                parentLink.classList.add('active');
-                            }
-                        }
-                    }
-                    
-                    tabContents.forEach(content => content.style.display = 'none');
-                    const activeTab = document.getElementById(`${tabId}-tab`);
-                    if (activeTab) {
-                        activeTab.style.display = 'block';
-                    }
-                    
-                    if (window.innerWidth < 992) {
-                        if (sidebar) sidebar.classList.remove('expanded');
-                        if (mobileNavBackdrop) mobileNavBackdrop.classList.remove('expanded');
-                    }
-                    
-                    if (tabId === 'data-count') {
-                        renderDataCountTable();
-                    } else if (tabId === 'master-location') {
-                        renderMasterLocationData();
-                    } else if (tabId === 'master-ean') {
-                        renderMasterEanData();
-                    } else if (tabId === 'inventory-balance') {
-                        renderInventoryData();
-                    } else if (tabId === 'github-config') {
+                    // Simple validation - in production, this would be server-side
+                    if (username && password) {
+                        currentUser = username;
+                        userKey = username.replace(/\s+/g, '_').toLowerCase();
+                        
+                        // Initialize storage manager for this user
+                        storageManager = new HybridStorageManager(userKey);
+                        
+                        // Initialize GitHub sync manager
+                        githubSyncManager = new GitHubSyncManager(storageManager, userKey);
+                        
+                        // Initialize sync manager
+                        syncManager = new SyncManager(storageManager, githubSyncManager);
+                        
+                        // Load GitHub config
                         loadGithubConfig();
-                    } else if (tabId === 'storage-status') {
-                        renderStorageStatus();
-                    }
-                });
-            });
-            
-            // Initialize app with user-specific data
-            async function initApp() {
-                try {
-                    // Setup all functions
-                    setupMasterLocationFunctions();
-                    setupMasterEanFunctions();
-                    setupInventoryFunctions();
-                    setupDataCountFunctions();
-                    
-                    // Form elements
-                    const form = document.getElementById('cycleCountForm');
-                    const locationField = document.getElementById('location');
-                    const eanField = document.getElementById('ean');
-                    const eanLoading = document.getElementById('ean-loading');
-                    const skuField = document.getElementById('sku');
-                    const descriptionField = document.getElementById('description');
-                    const traceIdField = document.getElementById('traceId');
-                    const countTypeField = document.getElementById('countType');
-                    const qtyField = document.getElementById('qty');
-                    const remarkField = document.getElementById('remark');
-                    const notification = document.getElementById('notification');
-                    const countSavedNotification = document.getElementById('count-saved');
-                    const saveLocationBtn = document.getElementById('save-location-btn');
-                    const currentLocationDisplay = document.getElementById('current-location-display');
-                    const currentLocationName = document.getElementById('current-location-name');
-                    const currentLocationSkuCount = document.getElementById('current-location-sku-count');
-                    const autoSyncToggle = document.getElementById('auto-sync-toggle');
-                    
-                    // Navigation elements
-                    const navigationContainer = document.getElementById('navigation-container');
-                    const prevBtn = document.getElementById('prev-btn');
-                    const nextBtn = document.getElementById('next-btn');
-                    const navInfo = document.getElementById('nav-info');
-                    
-                    // Storage status elements
-                    const refreshStorageStatsBtn = document.getElementById('refresh-storage-stats');
-                    const clearAllDataBtn = document.getElementById('clear-all-data');
-                    const saveStorageSettingsBtn = document.getElementById('save-storage-settings');
-                    
-                    // Set default dates for filter
-                    const today = new Date();
-                    const oneWeekAgo = new Date();
-                    oneWeekAgo.setDate(today.getDate() - 7);
-                    
-                    const startDateFilter = document.getElementById('start-date');
-                    const endDateFilter = document.getElementById('end-date');
-                    
-                    if (startDateFilter && endDateFilter) {
-                        startDateFilter.value = oneWeekAgo.toISOString().split('T')[0];
-                        endDateFilter.value = today.toISOString().split('T')[0];
-                    }
-                    
-                    // Location validation with master data
-                    if (locationField) {
-                        // Event untuk input lokasi - cari di master data
-                        locationField.addEventListener('input', async function() {
-                            const locationCode = this.value.trim();
-                            
-                            if (locationCode) {
-                                try {
-                                    const masterLocationData = await storageManager.getMasterLocation();
-                                    const foundLocation = masterLocationData.find(loc => 
-                                        loc.location === locationCode || loc.validationCode === locationCode
-                                    );
-                                    
-                                    if (foundLocation) {
-                                        // Jika ditemukan di master, gunakan data dari master
-                                        const actualLocationCode = foundLocation.location;
-                                        
-                                        // Update tampilan dengan informasi lokasi yang valid
-                                        if (currentLocationDisplay) {
-                                            currentLocationDisplay.style.display = 'block';
-                                            currentLocationName.textContent = `${actualLocationCode} (Valid)`;
-                                            currentLocationName.className = 'fw-bold text-success';
-                                        }
-                                        
-                                        // Hitung SKU untuk lokasi ini
-                                        const inventoryData = await storageManager.getInventory();
-                                        const locationSKUs = inventoryData.filter(item => item.locationId === actualLocationCode);
-                                        if (currentLocationSkuCount) {
-                                            currentLocationSkuCount.textContent = locationSKUs.length;
-                                        }
-                                        
-                                        showToast(`Lokasi valid: ${actualLocationCode}`, 'success');
-                                    } else {
-                                        // Jika tidak ditemukan, tetap tampilkan tapi dengan status tidak valid
-                                        if (currentLocationDisplay) {
-                                            currentLocationDisplay.style.display = 'block';
-                                            currentLocationName.textContent = `${locationCode} (Tidak Valid)`;
-                                            currentLocationName.className = 'fw-bold text-danger';
-                                        }
-                                        if (currentLocationSkuCount) {
-                                            currentLocationSkuCount.textContent = '0';
-                                        }
-                                        
-                                        showToast('Lokasi tidak ditemukan di master data', 'warning');
-                                    }
-                                } catch (error) {
-                                    console.error('Error searching location:', error);
-                                }
-                            } else {
-                                if (currentLocationDisplay) {
-                                    currentLocationDisplay.style.display = 'none';
-                                }
-                            }
-                        });
-
-                        // Event untuk save location button
-                        saveLocationBtn.addEventListener('click', async function() {
-                            const location = locationField.value.trim();
-                            if (location) {
-                                // Cari di master data untuk validasi
-                                const masterLocationData = await storageManager.getMasterLocation();
-                                const foundLocation = masterLocationData.find(loc => 
-                                    loc.location === location || loc.validationCode === location
-                                );
-                                
-                                let actualLocation = location;
-                                if (foundLocation) {
-                                    actualLocation = foundLocation.location; // Gunakan location code dari master
-                                    locationField.value = actualLocation; // Update field dengan location code yang benar
-                                }
-                                
-                                sessionStorage.setItem('currentLocation', actualLocation);
-                                if (currentLocationDisplay) {
-                                    currentLocationDisplay.style.display = 'block';
-                                    currentLocationName.textContent = actualLocation;
-                                    currentLocationName.className = `fw-bold ${foundLocation ? 'text-success' : 'text-danger'}`;
-                                }
-                                
-                                // Count SKUs untuk lokasi ini
-                                const inventoryData = await storageManager.getInventory();
-                                const locationSKUs = inventoryData.filter(item => item.locationId === actualLocation);
-                                if (currentLocationSkuCount) {
-                                    currentLocationSkuCount.textContent = locationSKUs.length;
-                                }
-                                
-                                const status = foundLocation ? 'valid' : 'tidak valid';
-                                showToast(`Lokasi ${actualLocation} (${status}) berhasil disimpan`);
-                            } else {
-                                showToast('Harap masukkan kode lokasi', 'error');
-                            }
-                        });
-                    }
-                    
-                    // Load saved location
-                    const savedLocation = sessionStorage.getItem('currentLocation');
-                    if (savedLocation && locationField) {
-                        locationField.value = savedLocation;
-                        if (currentLocationDisplay) {
-                            currentLocationDisplay.style.display = 'block';
-                        }
-                        if (currentLocationName) {
-                            currentLocationName.textContent = savedLocation;
+                        
+                        // Load last sync timestamps
+                        githubSyncManager.loadLastSyncTimestamps();
+                        
+                        // Update UI
+                        if (userWelcome) {
+                            userWelcome.textContent = `Halo, ${username}`;
                         }
                         
-                        // Count SKUs untuk lokasi ini
-                        if (storageManager) {
-                            storageManager.getInventory().then(inventoryData => {
-                                const locationSKUs = inventoryData.filter(item => item.locationId === savedLocation);
-                                if (currentLocationSkuCount) {
-                                    currentLocationSkuCount.textContent = locationSKUs.length;
-                                }
-                            });
+                        // Show app, hide login
+                        loginContainer.style.display = 'none';
+                        appContainer.style.display = 'flex';
+                        
+                        // Initialize all data displays
+                        renderDataCountTable();
+                        renderMasterLocationData();
+                        renderMasterEanData();
+                        renderInventoryData();
+                        renderStorageStatus();
+                        
+                        // Setup all functions
+                        setupMasterLocationFunctions();
+                        setupMasterEanFunctions();
+                        setupInventoryFunctions();
+                        setupDataCountFunctions();
+                        setupStorageStatusFunctions();
+                        setupSidebarNavigation();
+                        
+                        // Check if remember me is checked
+                        if (remember) {
+                            localStorage.setItem('rememberedUser', username);
+                        } else {
+                            localStorage.removeItem('rememberedUser');
                         }
+                        
+                        showToast(`Selamat datang, ${username}!`);
+                    } else {
+                        showToast('Username dan password harus diisi', 'error');
+                    }
+                });
+            }
+            
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', function() {
+                    currentUser = null;
+                    userKey = null;
+                    storageManager = null;
+                    githubSyncManager = null;
+                    syncManager = null;
+                    
+                    // Clear auto-sync interval
+                    if (autoSyncInterval) {
+                        clearInterval(autoSyncInterval);
+                        autoSyncInterval = null;
                     }
                     
-                    // EAN field with auto-complete
-                    if (eanField) {
-                        eanField.addEventListener('input', async function() {
-                            const ean = this.value.trim();
-                            
-                            if (ean.length >= 8) {
-                                if (eanLoading) eanLoading.style.display = 'block';
-                                
-                                try {
-                                    const masterEanData = await storageManager.getMasterEan();
-                                    const matchedEan = masterEanData.find(item => item.ean === ean);
-                                    
-                                    if (matchedEan) {
-                                        if (skuField) skuField.value = matchedEan.sku;
-                                        
-                                        // Search inventory for this SKU at current location
-                                        const currentLocation = sessionStorage.getItem('currentLocation');
-                                        if (currentLocation) {
-                                            const inventoryData = await storageManager.searchInventory(currentLocation, matchedEan.sku);
-                                            
-                                            if (inventoryData.length > 0) {
-                                                const item = inventoryData[0];
-                                                if (descriptionField) descriptionField.value = item.skuDescrL || '';
-                                                if (traceIdField) traceIdField.value = item.traceId || '';
-                                                
-                                                if (notification) notification.style.display = 'none';
-                                            } else {
-                                                if (notification) notification.style.display = 'block';
-                                                if (descriptionField) descriptionField.value = '';
-                                                if (traceIdField) traceIdField.value = '';
-                                            }
-                                        }
-                                    } else {
-                                        if (skuField) skuField.value = '';
-                                        if (descriptionField) descriptionField.value = '';
-                                        if (traceIdField) traceIdField.value = '';
-                                        if (notification) notification.style.display = 'block';
-                                    }
-                                } catch (error) {
-                                    console.error('Error searching EAN:', error);
-                                } finally {
-                                    if (eanLoading) eanLoading.style.display = 'none';
-                                }
-                            }
-                        });
+                    // Show login, hide app
+                    loginContainer.style.display = 'flex';
+                    appContainer.style.display = 'none';
+                    
+                    // Reset form
+                    if (loginForm) {
+                        loginForm.reset();
                     }
                     
-                    // Form submission
-                    if (form) {
-                        form.addEventListener('submit', async function(e) {
-                            e.preventDefault();
-                            
-                            const location = locationField ? locationField.value.trim() : '';
-                            const ean = eanField ? eanField.value.trim() : '';
-                            const sku = skuField ? skuField.value.trim() : '';
-                            const description = descriptionField ? descriptionField.value.trim() : '';
-                            const traceId = traceIdField ? traceIdField.value.trim() : '';
-                            const countType = countTypeField ? countTypeField.value : '1stCount';
-                            const qty = qtyField ? parseInt(qtyField.value) || 0 : 0;
-                            const remark = remarkField ? remarkField.value.trim() : '';
-                            
-                            if (!location || !ean || !sku) {
-                                showToast('Lokasi, EAN, dan SKU harus diisi', 'error');
-                                return;
-                            }
-                            
-                            if (qty < 0) {
-                                showToast('Qty tidak boleh negatif', 'error');
-                                return;
-                            }
-                            
-                            if (notification && notification.style.display === 'block' && !remark) {
-                                showToast('Harap isi keterangan (remark) karena data tidak ditemukan di inventory', 'error');
-                                return;
-                            }
-                            
-                            try {
-                                const countData = {
-                                    location,
-                                    ean,
-                                    sku,
-                                    description,
-                                    traceId,
-                                    countType,
-                                    qty,
-                                    remark,
-                                    timestamp: new Date().toISOString()
-                                };
-                                
-                                await storageManager.saveCycleCount(countData);
-                                showToast('Data count berhasil disimpan!');
-                                
-                                // Auto-sync to GitHub if enabled
-                                const githubConfig = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
-                                if (autoSyncToggle && autoSyncToggle.checked && githubConfig.autoSyncEnabled) {
-                                    const cycleCountData = await storageManager.getCycleCount();
-                                    await githubSyncManager.syncDataWithGithub('cycle_count', cycleCountData);
-                                }
-                                
-                                // Reset form
-                                if (eanField) eanField.value = '';
-                                if (skuField) skuField.value = '';
-                                if (descriptionField) descriptionField.value = '';
-                                if (traceIdField) traceIdField.value = '';
-                                if (qtyField) qtyField.value = '';
-                                if (remarkField) remarkField.value = '';
-                                if (notification) notification.style.display = 'none';
-                                
-                                // Focus on EAN field for next entry
-                                if (eanField) eanField.focus();
-                            } catch (error) {
-                                console.error('Error saving count data:', error);
-                                showToast('Error menyimpan data: ' + error.message, 'error');
-                            }
-                        });
-                    }
-                    
-                    // Storage status functions
-                    if (refreshStorageStatsBtn) {
-                        refreshStorageStatsBtn.addEventListener('click', renderStorageStatus);
-                    }
-                    
-                    if (clearAllDataBtn) {
-                        clearAllDataBtn.addEventListener('click', async function() {
-                            if (confirm('Apakah Anda yakin ingin menghapus SEMUA data? Tindakan ini tidak dapat dibatalkan!')) {
-                                try {
-                                    await storageManager.clearAllData();
-                                    showToast('Semua data berhasil dihapus!');
-                                    await renderStorageStatus();
-                                    
-                                    // Refresh tables
-                                    await renderDataCountTable();
-                                    await renderMasterLocationData();
-                                    await renderMasterEanData();
-                                    await renderInventoryData();
-                                } catch (error) {
-                                    console.error('Error clearing all data:', error);
-                                    showToast('Error menghapus data: ' + error.message, 'error');
-                                }
-                            }
-                        });
-                    }
-                    
-                    if (saveStorageSettingsBtn) {
-                        saveStorageSettingsBtn.addEventListener('click', function() {
-                            const enableIndexedDB = document.getElementById('enable-indexeddb');
-                            const enableLocalStorage = document.getElementById('enable-localstorage');
-                            const enableGitHubSync = document.getElementById('enable-github-sync');
-                            
-                            if (enableIndexedDB && enableLocalStorage && enableGitHubSync) {
-                                storageManager.settings.enableIndexedDB = enableIndexedDB.checked;
-                                storageManager.settings.enableLocalStorage = enableLocalStorage.checked;
-                                storageManager.settings.enableGitHubSync = enableGitHubSync.checked;
-                                
-                                storageManager.saveSettings();
-                                showToast('Pengaturan penyimpanan berhasil disimpan!');
-                            }
-                        });
-                    }
-                    
-                    // Initial render
-                    await renderDataCountTable();
-                    await renderMasterLocationData();
-                    await renderMasterEanData();
-                    await renderInventoryData();
-                    await renderStorageStatus();
-                    
-                    showToast(`Selamat datang, ${username}! Aplikasi siap digunakan.`);
-                } catch (error) {
-                    console.error('Error initializing app:', error);
-                    showToast('Terjadi kesalahan saat memuat aplikasi. Silakan refresh halaman.', 'error');
-                }
+                    showToast('Anda telah logout');
+                });
+            }
+            
+            // Check for remembered user
+            const rememberedUser = localStorage.getItem('rememberedUser');
+            if (rememberedUser) {
+                document.getElementById('username').value = rememberedUser;
+                document.getElementById('remember').checked = true;
+            }
+        }
+        
+        // ==============================
+        // INITIALIZATION
+        // ==============================
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize login functionality
+            setupLoginFunctionality();
+            
+            // Set default dates for filter
+            const startDateFilter = document.getElementById('start-date');
+            const endDateFilter = document.getElementById('end-date');
+            
+            if (startDateFilter) {
+                const today = new Date();
+                const oneWeekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+                startDateFilter.valueAsDate = oneWeekAgo;
+            }
+            
+            if (endDateFilter) {
+                endDateFilter.valueAsDate = new Date();
             }
         });
     </script>
