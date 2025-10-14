@@ -694,8 +694,8 @@
                 </a>
                 <div class="d-flex align-items-center">
                     <span class="me-3 d-none d-md-block text-muted" id="user-welcome">Halo, User</span>
-                    <span id="github-connection-status" class="github-status checking">
-                        <i class="fas fa-circle-notch fa-spin me-1"></i> Checking GitHub
+                    <span id="github-connection-status" class="github-status disconnected">
+                        <i class="fas fa-plug me-1"></i> GitHub: Tidak Terhubung
                     </span>
                     <button class="btn btn-outline-danger btn-sm ms-2" id="logout-btn">
                         <i class="fas fa-sign-out-alt me-1"></i> Logout
@@ -890,6 +890,9 @@
                         </button>
                         <button type="button" class="btn btn-info" id="sync-from-github-cyclecount">
                             <i class="fas fa-download"></i> Sync dari GitHub
+                        </button>
+                        <button type="button" class="btn btn-success" id="sync-all-data">
+                            <i class="fas fa-cloud-upload-alt"></i> Sync Semua Data
                         </button>
                     </div>
                     <div class="progress" id="sync-cyclecount-progress" style="display: none;">
@@ -1228,20 +1231,18 @@
                             </label>
                         </div>
                         
-                        <div class="d-flex flex-wrap gap-2">
-                            <button type="button" class="btn btn-primary" id="save-github-config">
-                                <i class="fas fa-save"></i> Simpan Konfigurasi
-                            </button>
-                            <button type="button" class="btn btn-info" id="test-github-connection">
-                                <i class="fas fa-plug"></i> Test Koneksi
-                            </button>
-                            <button type="button" class="btn btn-success" id="sync-all-to-github">
-                                <i class="fas fa-cloud-upload-alt"></i> Sync Semua Data ke GitHub
-                            </button>
-                            <button type="button" class="btn btn-warning" id="sync-all-from-github">
-                                <i class="fas fa-cloud-download-alt"></i> Sync Semua Data dari GitHub
-                            </button>
-                        </div>
+                        <button type="button" class="btn btn-primary" id="save-github-config">
+                            <i class="fas fa-save"></i> Simpan Konfigurasi
+                        </button>
+                        <button type="button" class="btn btn-info ms-2" id="test-github-connection">
+                            <i class="fas fa-plug"></i> Test Koneksi
+                        </button>
+                        <button type="button" class="btn btn-success ms-2" id="sync-all-to-github">
+                            <i class="fas fa-cloud-upload-alt"></i> Sync Semua Data ke GitHub
+                        </button>
+                        <button type="button" class="btn btn-warning ms-2" id="sync-all-from-github">
+                            <i class="fas fa-cloud-download-alt"></i> Sync Semua Data dari GitHub
+                        </button>
 
                         <div class="mt-3" id="github-connection-test-result"></div>
                     </div>
@@ -1349,6 +1350,7 @@
                 this.storageManager = storageManager;
                 this.userKey = userKey;
                 this.config = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
+                this.isConnected = false;
             }
 
             async getFileSha(owner, repo, path, branch = 'main') {
@@ -1577,6 +1579,42 @@
                     }
                 });
             }
+
+            // Test connection to GitHub
+            async testConnection() {
+                if (!this.config.token || !this.config.owner || !this.config.repo) {
+                    this.isConnected = false;
+                    return false;
+                }
+
+                try {
+                    const url = `https://api.github.com/repos/${this.config.owner}/${this.config.repo}`;
+                    const response = await fetch(url, {
+                        headers: {
+                            'Authorization': `token ${this.config.token}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        this.isConnected = true;
+                        return true;
+                    } else {
+                        this.isConnected = false;
+                        return false;
+                    }
+                } catch (error) {
+                    console.error('Error testing GitHub connection:', error);
+                    this.isConnected = false;
+                    return false;
+                }
+            }
+
+            // Reset connection status
+            resetConnection() {
+                this.isConnected = false;
+                this.config = {};
+            }
         }
 
         // ==============================
@@ -1594,6 +1632,15 @@
                 if (this.isSyncing) {
                     showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
                     return;
+                }
+
+                // Check GitHub connection
+                if (!this.githubSyncManager.isConnected) {
+                    const isConnected = await this.githubSyncManager.testConnection();
+                    if (!isConnected) {
+                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
+                        return;
+                    }
                 }
 
                 this.isSyncing = true;
@@ -1663,6 +1710,15 @@
                 if (this.isSyncing) {
                     showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
                     return;
+                }
+
+                // Check GitHub connection
+                if (!this.githubSyncManager.isConnected) {
+                    const isConnected = await this.githubSyncManager.testConnection();
+                    if (!isConnected) {
+                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
+                        return;
+                    }
                 }
 
                 this.isSyncing = true;
@@ -1782,6 +1838,15 @@
                     return;
                 }
 
+                // Check GitHub connection
+                if (!this.githubSyncManager.isConnected) {
+                    const isConnected = await this.githubSyncManager.testConnection();
+                    if (!isConnected) {
+                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
+                        return;
+                    }
+                }
+
                 this.isSyncing = true;
                 showToast('Memulai sinkronisasi semua data ke GitHub...', 'info');
 
@@ -1793,18 +1858,22 @@
                     showToast(`Error sinkronisasi: ${error.message}`, 'error');
                 } finally {
                     this.isSyncing = false;
-                // Refresh semua tampilan data
-                await renderDataCountTable();
-                await renderMasterLocationData();
-                await renderMasterEanData();
-                await renderInventoryData();
-                await renderStorageStatus();
+                }
             }
 
             async syncAllFromGitHub() {
                 if (this.isSyncing) {
                     showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
                     return;
+                }
+
+                // Check GitHub connection
+                if (!this.githubSyncManager.isConnected) {
+                    const isConnected = await this.githubSyncManager.testConnection();
+                    if (!isConnected) {
+                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
+                        return;
+                    }
                 }
 
                 this.isSyncing = true;
@@ -1818,7 +1887,6 @@
                     await renderMasterLocationData();
                     await renderMasterEanData();
                     await renderInventoryData();
-                    await renderStorageStatus();
                     
                     showToast('Semua data berhasil dimuat dari GitHub!');
                 } catch (error) {
@@ -2585,7 +2653,7 @@
             if (!config.token || !config.owner || !config.repo) {
                 if (statusElement) {
                     statusElement.className = 'github-status disconnected';
-                    statusElement.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Tidak Terkonfigurasi';
+                    statusElement.innerHTML = '<i class="fas fa-plug me-1"></i> GitHub: Tidak Terkonfigurasi';
                 }
                 if (testResultElement) {
                     testResultElement.innerHTML = '<div class="alert alert-warning mt-3">Konfigurasi GitHub belum lengkap</div>';
@@ -2615,6 +2683,12 @@
                     if (testResultElement) {
                         testResultElement.innerHTML = '<div class="alert alert-success mt-3">Koneksi GitHub berhasil!</div>';
                     }
+                    
+                    // Update GitHubSyncManager connection status
+                    if (githubSyncManager) {
+                        githubSyncManager.isConnected = true;
+                    }
+                    
                     return true;
                 } else {
                     if (statusElement) {
@@ -2624,6 +2698,12 @@
                     if (testResultElement) {
                         testResultElement.innerHTML = `<div class="alert alert-danger mt-3">Gagal terhubung ke GitHub: ${response.status} ${response.statusText}</div>`;
                     }
+                    
+                    // Update GitHubSyncManager connection status
+                    if (githubSyncManager) {
+                        githubSyncManager.isConnected = false;
+                    }
+                    
                     return false;
                 }
             } catch (error) {
@@ -2635,7 +2715,25 @@
                 if (testResultElement) {
                     testResultElement.innerHTML = `<div class="alert alert-danger mt-3">Error: ${error.message}</div>`;
                 }
+                
+                // Update GitHubSyncManager connection status
+                if (githubSyncManager) {
+                    githubSyncManager.isConnected = false;
+                }
+                
                 return false;
+            }
+        }
+        
+        function resetGithubConnection() {
+            const statusElement = document.getElementById('github-connection-status');
+            if (statusElement) {
+                statusElement.className = 'github-status disconnected';
+                statusElement.innerHTML = '<i class="fas fa-plug me-1"></i> GitHub: Tidak Terhubung';
+            }
+            
+            if (githubSyncManager) {
+                githubSyncManager.resetConnection();
             }
         }
         
@@ -2661,7 +2759,11 @@
             syncInterval.value = config.syncInterval || 5;
             autoSyncEnabled.checked = config.autoSyncEnabled || false;
             
-            testGithubConnection();
+            // Update GitHubSyncManager config
+            if (githubSyncManager) {
+                githubSyncManager.config = config;
+                testGithubConnection();
+            }
             
             if (config.autoSyncEnabled) {
                 startAutoSync(config.syncInterval || 5);
@@ -2701,13 +2803,13 @@
             testGithubConnectionBtn.addEventListener('click', function() {
                 testGithubConnection();
             });
-
+            
             syncAllToGithubBtn.addEventListener('click', function() {
                 if (syncManager) {
                     syncManager.syncAllToGitHub();
                 }
             });
-
+            
             syncAllFromGithubBtn.addEventListener('click', function() {
                 if (syncManager) {
                     syncManager.syncAllFromGitHub();
@@ -3416,7 +3518,7 @@
                     });
             });
             
-            // Sync Master EAN
+            // Sync Master EAN to GitHub
             document.getElementById('sync-master-ean').addEventListener('click', async function() {
                 await syncManager.syncToGitHub('master_ean', 
                     document.getElementById('sync-master-ean-progress'));
@@ -3580,7 +3682,7 @@
                     });
             });
             
-            // Sync Inventory
+            // Sync Inventory to GitHub
             document.getElementById('sync-inventory').addEventListener('click', async function() {
                 await syncManager.syncToGitHub('inventory_data', 
                     document.getElementById('sync-inventory-progress'));
@@ -3607,6 +3709,11 @@
             document.getElementById('sync-from-github-cyclecount').addEventListener('click', async function() {
                 await syncManager.syncFromGitHub('cycle_count', 
                     document.getElementById('sync-cyclecount-progress'));
+            });
+            
+            // Sync All Data
+            document.getElementById('sync-all-data').addEventListener('click', async function() {
+                await syncManager.syncAllToGitHub();
             });
             
             // Export Data Count
@@ -3743,11 +3850,7 @@
                 }
                 
                 // Reset GitHub connection status
-                const githubStatus = document.getElementById('github-connection-status');
-                if (githubStatus) {
-                    githubStatus.className = 'github-status disconnected';
-                    githubStatus.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Logout';
-                }
+                resetGithubConnection();
                 
                 sessionStorage.removeItem('currentUser');
                 showLogin();
@@ -3937,8 +4040,62 @@
                         endDateFilter.value = today.toISOString().split('T')[0];
                     }
                     
-                    // Save location button
-                    if (saveLocationBtn && locationField) {
+                    // Location validation with master data
+                    if (locationField) {
+                        // Event untuk input lokasi - cari di master data
+                        locationField.addEventListener('input', async function() {
+                            const locationCode = this.value.trim();
+                            
+                            if (locationCode) {
+                                try {
+                                    const masterLocationData = await storageManager.getMasterLocation();
+                                    const foundLocation = masterLocationData.find(loc => 
+                                        loc.location === locationCode || loc.validationCode === locationCode
+                                    );
+                                    
+                                    if (foundLocation) {
+                                        // Jika ditemukan di master, gunakan data dari master
+                                        const actualLocationCode = foundLocation.location;
+                                        
+                                        // Update tampilan dengan informasi lokasi yang valid
+                                        if (currentLocationDisplay) {
+                                            currentLocationDisplay.style.display = 'block';
+                                            currentLocationName.textContent = `${actualLocationCode} (Valid)`;
+                                            currentLocationName.className = 'fw-bold text-success';
+                                        }
+                                        
+                                        // Hitung SKU untuk lokasi ini
+                                        const inventoryData = await storageManager.getInventory();
+                                        const locationSKUs = inventoryData.filter(item => item.locationId === actualLocationCode);
+                                        if (currentLocationSkuCount) {
+                                            currentLocationSkuCount.textContent = locationSKUs.length;
+                                        }
+                                        
+                                        showToast(`Lokasi valid: ${actualLocationCode}`, 'success');
+                                    } else {
+                                        // Jika tidak ditemukan, tetap tampilkan tapi dengan status tidak valid
+                                        if (currentLocationDisplay) {
+                                            currentLocationDisplay.style.display = 'block';
+                                            currentLocationName.textContent = `${locationCode} (Tidak Valid)`;
+                                            currentLocationName.className = 'fw-bold text-danger';
+                                        }
+                                        if (currentLocationSkuCount) {
+                                            currentLocationSkuCount.textContent = '0';
+                                        }
+                                        
+                                        showToast('Lokasi tidak ditemukan di master data', 'warning');
+                                    }
+                                } catch (error) {
+                                    console.error('Error searching location:', error);
+                                }
+                            } else {
+                                if (currentLocationDisplay) {
+                                    currentLocationDisplay.style.display = 'none';
+                                }
+                            }
+                        });
+
+                        // Event untuk save location button
                         saveLocationBtn.addEventListener('click', async function() {
                             const location = locationField.value.trim();
                             if (location) {
@@ -3980,24 +4137,21 @@
                     const savedLocation = sessionStorage.getItem('currentLocation');
                     if (savedLocation && locationField) {
                         locationField.value = savedLocation;
-                        
-                        // Cari di master data untuk validasi
-                        const masterLocationData = await storageManager.getMasterLocation();
-                        const foundLocation = masterLocationData.find(loc => 
-                            loc.location === savedLocation || loc.validationCode === savedLocation
-                        );
-                        
                         if (currentLocationDisplay) {
                             currentLocationDisplay.style.display = 'block';
+                        }
+                        if (currentLocationName) {
                             currentLocationName.textContent = savedLocation;
-                            currentLocationName.className = `fw-bold ${foundLocation ? 'text-success' : 'text-danger'}`;
                         }
                         
                         // Count SKUs untuk lokasi ini
-                        const inventoryData = await storageManager.getInventory();
-                        const locationSKUs = inventoryData.filter(item => item.locationId === savedLocation);
-                        if (currentLocationSkuCount) {
-                            currentLocationSkuCount.textContent = locationSKUs.length;
+                        if (storageManager) {
+                            storageManager.getInventory().then(inventoryData => {
+                                const locationSKUs = inventoryData.filter(item => item.locationId === savedLocation);
+                                if (currentLocationSkuCount) {
+                                    currentLocationSkuCount.textContent = locationSKUs.length;
+                                }
+                            });
                         }
                     }
                     
