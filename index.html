@@ -1228,12 +1228,20 @@
                             </label>
                         </div>
                         
-                        <button type="button" class="btn btn-primary" id="save-github-config">
-                            <i class="fas fa-save"></i> Simpan Konfigurasi
-                        </button>
-                        <button type="button" class="btn btn-info ms-2" id="test-github-connection">
-                            <i class="fas fa-plug"></i> Test Koneksi
-                        </button>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-primary" id="save-github-config">
+                                <i class="fas fa-save"></i> Simpan Konfigurasi
+                            </button>
+                            <button type="button" class="btn btn-info" id="test-github-connection">
+                                <i class="fas fa-plug"></i> Test Koneksi
+                            </button>
+                            <button type="button" class="btn btn-success" id="sync-all-to-github">
+                                <i class="fas fa-cloud-upload-alt"></i> Sync Semua Data ke GitHub
+                            </button>
+                            <button type="button" class="btn btn-warning" id="sync-all-from-github">
+                                <i class="fas fa-cloud-download-alt"></i> Sync Semua Data dari GitHub
+                            </button>
+                        </div>
 
                         <div class="mt-3" id="github-connection-test-result"></div>
                     </div>
@@ -1568,6 +1576,257 @@
                         element.textContent = lastSync;
                     }
                 });
+            }
+        }
+
+        // ==============================
+        // SYNC MANAGER
+        // ==============================
+        
+        class SyncManager {
+            constructor(storageManager, githubSyncManager) {
+                this.storageManager = storageManager;
+                this.githubSyncManager = githubSyncManager;
+                this.isSyncing = false;
+            }
+
+            async syncToGitHub(dataType, progressElement = null) {
+                if (this.isSyncing) {
+                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
+                    return;
+                }
+
+                this.isSyncing = true;
+                const buttonId = `sync-${dataType.replace('_', '-')}`;
+                this.setButtonState(buttonId, true);
+
+                try {
+                    let data;
+                    switch(dataType) {
+                        case 'cycle_count':
+                            data = await this.storageManager.getCycleCount();
+                            break;
+                        case 'master_location':
+                            data = await this.storageManager.getMasterLocation();
+                            break;
+                        case 'master_ean':
+                            data = await this.storageManager.getMasterEan();
+                            break;
+                        case 'inventory_data':
+                            data = await this.storageManager.getInventory();
+                            break;
+                        default:
+                            throw new Error('Tipe data tidak dikenali');
+                    }
+
+                    if (progressElement) {
+                        progressElement.style.display = 'block';
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '50%';
+                    }
+
+                    await this.githubSyncManager.syncDataWithGithub(dataType, data);
+                    
+                    if (progressElement) {
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '100%';
+                    }
+
+                    this.githubSyncManager.updateLastSyncTimestamps();
+                    showToast(`Data ${dataType} berhasil disinkronisasi ke GitHub!`);
+                    
+                    // Tunggu sebentar sebelum menyembunyikan progress bar
+                    setTimeout(() => {
+                        if (progressElement) {
+                            progressElement.style.display = 'none';
+                            const progressBar = progressElement.querySelector('.progress-bar');
+                            progressBar.style.width = '0%';
+                        }
+                    }, 1000);
+
+                } catch (error) {
+                    console.error(`Error syncing ${dataType}:`, error);
+                    showToast(`Error sinkronisasi ${dataType}: ${error.message}`, 'error');
+                    
+                    if (progressElement) {
+                        progressElement.style.display = 'none';
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '0%';
+                    }
+                } finally {
+                    this.isSyncing = false;
+                    this.setButtonState(buttonId, false);
+                }
+            }
+
+            async syncFromGitHub(dataType, progressElement = null) {
+                if (this.isSyncing) {
+                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
+                    return;
+                }
+
+                this.isSyncing = true;
+                const buttonId = `sync-from-github-${dataType.replace('_', '-')}`;
+                this.setButtonState(buttonId, true);
+
+                try {
+                    if (progressElement) {
+                        progressElement.style.display = 'block';
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '30%';
+                    }
+
+                    const data = await this.githubSyncManager.downloadFromGitHub(
+                        this.githubSyncManager.getFilenameForDataType(dataType)
+                    ) || [];
+
+                    if (progressElement) {
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '70%';
+                    }
+
+                    if (data.length > 0) {
+                        switch(dataType) {
+                            case 'cycle_count':
+                                for (const item of data) {
+                                    await this.storageManager.saveCycleCount(item);
+                                }
+                                break;
+                            case 'master_location':
+                                await this.storageManager.saveMasterLocation(data);
+                                break;
+                            case 'master_ean':
+                                await this.storageManager.saveMasterEan(data);
+                                break;
+                            case 'inventory_data':
+                                await this.storageManager.saveInventory(data);
+                                break;
+                        }
+
+                        if (progressElement) {
+                            const progressBar = progressElement.querySelector('.progress-bar');
+                            progressBar.style.width = '100%';
+                        }
+
+                        showToast(`Data ${dataType} berhasil dimuat dari GitHub!`);
+                        
+                        // Refresh tampilan data
+                        this.refreshDataDisplay(dataType);
+                        
+                        setTimeout(() => {
+                            if (progressElement) {
+                                progressElement.style.display = 'none';
+                                const progressBar = progressElement.querySelector('.progress-bar');
+                                progressBar.style.width = '0%';
+                            }
+                        }, 1000);
+                    } else {
+                        showToast(`Tidak ada data ${dataType} di GitHub`, 'info');
+                        if (progressElement) {
+                            progressElement.style.display = 'none';
+                        }
+                    }
+                } catch (error) {
+                    console.error(`Error syncing ${dataType} from GitHub:`, error);
+                    showToast(`Error memuat data ${dataType} dari GitHub: ${error.message}`, 'error');
+                    
+                    if (progressElement) {
+                        progressElement.style.display = 'none';
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '0%';
+                    }
+                } finally {
+                    this.isSyncing = false;
+                    this.setButtonState(buttonId, false);
+                }
+            }
+
+            setButtonState(buttonId, isLoading) {
+                const button = document.getElementById(buttonId);
+                if (!button) return;
+
+                if (isLoading) {
+                    button.disabled = true;
+                    const originalHTML = button.innerHTML;
+                    button.setAttribute('data-original-html', originalHTML);
+                    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+                } else {
+                    button.disabled = false;
+                    const originalHTML = button.getAttribute('data-original-html');
+                    if (originalHTML) {
+                        button.innerHTML = originalHTML;
+                    }
+                }
+            }
+
+            refreshDataDisplay(dataType) {
+                switch(dataType) {
+                    case 'cycle_count':
+                        renderDataCountTable();
+                        break;
+                    case 'master_location':
+                        renderMasterLocationData();
+                        break;
+                    case 'master_ean':
+                        renderMasterEanData();
+                        break;
+                    case 'inventory_data':
+                        renderInventoryData();
+                        break;
+                }
+            }
+
+            async syncAllToGitHub() {
+                if (this.isSyncing) {
+                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
+                    return;
+                }
+
+                this.isSyncing = true;
+                showToast('Memulai sinkronisasi semua data ke GitHub...', 'info');
+
+                try {
+                    await this.githubSyncManager.syncAllDataToGitHub();
+                    showToast('Semua data berhasil disinkronisasi ke GitHub!');
+                } catch (error) {
+                    console.error('Error during full sync:', error);
+                    showToast(`Error sinkronisasi: ${error.message}`, 'error');
+                } finally {
+                    this.isSyncing = false;
+                // Refresh semua tampilan data
+                await renderDataCountTable();
+                await renderMasterLocationData();
+                await renderMasterEanData();
+                await renderInventoryData();
+                await renderStorageStatus();
+            }
+
+            async syncAllFromGitHub() {
+                if (this.isSyncing) {
+                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
+                    return;
+                }
+
+                this.isSyncing = true;
+                showToast('Memuat semua data dari GitHub...', 'info');
+
+                try {
+                    await this.githubSyncManager.syncFromGitHub();
+                    
+                    // Refresh semua tampilan data
+                    await renderDataCountTable();
+                    await renderMasterLocationData();
+                    await renderMasterEanData();
+                    await renderInventoryData();
+                    await renderStorageStatus();
+                    
+                    showToast('Semua data berhasil dimuat dari GitHub!');
+                } catch (error) {
+                    console.error('Error during full sync from GitHub:', error);
+                    showToast(`Error memuat data: ${error.message}`, 'error');
+                } finally {
+                    this.isSyncing = false;
+                }
             }
         }
 
@@ -2279,6 +2538,7 @@
         let userKey = null;
         let storageManager = null;
         let githubSyncManager = null;
+        let syncManager = null;
         let autoSyncInterval = null;
         
         function showToast(message, type = 'success') {
@@ -2388,6 +2648,8 @@
             const autoSyncEnabled = document.getElementById('auto-sync-enabled');
             const saveGithubConfigBtn = document.getElementById('save-github-config');
             const testGithubConnectionBtn = document.getElementById('test-github-connection');
+            const syncAllToGithubBtn = document.getElementById('sync-all-to-github');
+            const syncAllFromGithubBtn = document.getElementById('sync-all-from-github');
             
             if (!githubToken || !githubOwner || !githubRepo || !githubBranch || !syncInterval || !autoSyncEnabled || !saveGithubConfigBtn) return;
             
@@ -2438,6 +2700,18 @@
             
             testGithubConnectionBtn.addEventListener('click', function() {
                 testGithubConnection();
+            });
+
+            syncAllToGithubBtn.addEventListener('click', function() {
+                if (syncManager) {
+                    syncManager.syncAllToGitHub();
+                }
+            });
+
+            syncAllFromGithubBtn.addEventListener('click', function() {
+                if (syncManager) {
+                    syncManager.syncAllFromGitHub();
+                }
             });
         }
         
@@ -2614,7 +2888,7 @@
                         <td>${item.sku || ''}</td>
                         <td>${item.skuDescrL || ''}</td>
                         <td>${item.traceId || ''}</td>
-                        <td>${item.qtyOnHand || ''}</td>
+                        <td>${item.qtyOnHand || 0}</td>
                         <td>
                             <button class="btn btn-sm btn-danger delete-inventory-btn" data-id="${item.id}">
                                 <i class="fas fa-trash"></i>
@@ -2633,6 +2907,19 @@
             } catch (error) {
                 console.error('Error rendering inventory data:', error);
                 showToast('Error memuat data inventory: ' + error.message, 'error');
+                
+                // Fallback: tampilkan pesan error di tabel
+                const inventoryTable = document.getElementById('inventory-table') ? document.getElementById('inventory-table').querySelector('tbody') : null;
+                if (inventoryTable) {
+                    inventoryTable.innerHTML = `
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                Error memuat data inventory: ${error.message}
+                            </td>
+                        </tr>
+                    `;
+                }
             }
         }
         
@@ -2836,6 +3123,8 @@
         
         // Master Location Functions
         function setupMasterLocationFunctions() {
+            const syncManager = new SyncManager(storageManager, githubSyncManager);
+            
             // Upload Master Location
             document.getElementById('upload-master-location-btn').addEventListener('click', function() {
                 document.getElementById('master-location-file-input').click();
@@ -2864,15 +3153,43 @@
                         location: row['Location']
                     }));
                     
+                    // Update progress
+                    if (progressBar) {
+                        const progressFill = progressBar.querySelector('.progress-bar');
+                        progressFill.style.width = '50%';
+                        progressText.textContent = '50% - Menyimpan data...';
+                    }
+                    
                     // Save data
                     await storageManager.saveMasterLocation(masterLocationData);
+                    
+                    if (progressBar) {
+                        const progressFill = progressBar.querySelector('.progress-bar');
+                        progressFill.style.width = '100%';
+                        progressText.textContent = '100% - Selesai!';
+                    }
+                    
                     showToast('Data Master Lokasi berhasil diupload!');
                     await renderMasterLocationData();
+                    
+                    // Auto sync to GitHub jika enabled
+                    const githubConfig = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
+                    if (githubConfig.autoSyncEnabled) {
+                        setTimeout(() => {
+                            syncManager.syncToGitHub('master_location', 
+                                document.getElementById('sync-master-location-progress'));
+                        }, 1000);
+                    }
                 } catch (error) {
                     console.error('Error uploading master location data:', error);
                     showToast('Error uploading data: ' + error.message, 'error');
                 } finally {
-                    progressBar.style.display = 'none';
+                    setTimeout(() => {
+                        progressBar.style.display = 'none';
+                        const progressFill = progressBar.querySelector('.progress-bar');
+                        progressFill.style.width = '0%';
+                        progressText.textContent = '0%';
+                    }, 2000);
                     e.target.value = '';
                 }
             });
@@ -2945,39 +3262,23 @@
                     });
             });
             
-            // Sync Master Location
+            // Sync Master Location to GitHub
             document.getElementById('sync-master-location').addEventListener('click', async function() {
-                try {
-                    const data = await storageManager.getMasterLocation();
-                    await githubSyncManager.syncDataWithGithub('master_location', data);
-                    githubSyncManager.updateLastSyncTimestamps();
-                    showToast('Data Master Lokasi berhasil disinkronisasi!');
-                } catch (error) {
-                    console.error('Error syncing master location data:', error);
-                    showToast('Error sinkronisasi data: ' + error.message, 'error');
-                }
+                await syncManager.syncToGitHub('master_location', 
+                    document.getElementById('sync-master-location-progress'));
             });
             
             // Sync from GitHub for Master Location
             document.getElementById('sync-from-github-master-location').addEventListener('click', async function() {
-                try {
-                    const data = await githubSyncManager.downloadFromGitHub('master_location.json') || [];
-                    if (data.length > 0) {
-                        await storageManager.saveMasterLocation(data);
-                        await renderMasterLocationData();
-                        showToast('Data Master Lokasi berhasil dimuat dari GitHub!');
-                    } else {
-                        showToast('Tidak ada data Master Lokasi di GitHub', 'info');
-                    }
-                } catch (error) {
-                    console.error('Error syncing master location from GitHub:', error);
-                    showToast('Error memuat data dari GitHub: ' + error.message, 'error');
-                }
+                await syncManager.syncFromGitHub('master_location', 
+                    document.getElementById('sync-master-location-progress'));
             });
         }
         
         // Master EAN Functions
         function setupMasterEanFunctions() {
+            const syncManager = new SyncManager(storageManager, githubSyncManager);
+            
             // Upload Master EAN
             document.getElementById('upload-master-ean-btn').addEventListener('click', function() {
                 document.getElementById('master-ean-file-input').click();
@@ -3006,15 +3307,43 @@
                         sku: row['SKU']
                     }));
                     
+                    // Update progress
+                    if (progressBar) {
+                        const progressFill = progressBar.querySelector('.progress-bar');
+                        progressFill.style.width = '50%';
+                        progressText.textContent = '50% - Menyimpan data...';
+                    }
+                    
                     // Save data
                     await storageManager.saveMasterEan(masterEanData);
+                    
+                    if (progressBar) {
+                        const progressFill = progressBar.querySelector('.progress-bar');
+                        progressFill.style.width = '100%';
+                        progressText.textContent = '100% - Selesai!';
+                    }
+                    
                     showToast('Data Master EAN berhasil diupload!');
                     await renderMasterEanData();
+                    
+                    // Auto sync to GitHub jika enabled
+                    const githubConfig = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
+                    if (githubConfig.autoSyncEnabled) {
+                        setTimeout(() => {
+                            syncManager.syncToGitHub('master_ean', 
+                                document.getElementById('sync-master-ean-progress'));
+                        }, 1000);
+                    }
                 } catch (error) {
                     console.error('Error uploading master EAN data:', error);
                     showToast('Error uploading data: ' + error.message, 'error');
                 } finally {
-                    progressBar.style.display = 'none';
+                    setTimeout(() => {
+                        progressBar.style.display = 'none';
+                        const progressFill = progressBar.querySelector('.progress-bar');
+                        progressFill.style.width = '0%';
+                        progressText.textContent = '0%';
+                    }, 2000);
                     e.target.value = '';
                 }
             });
@@ -3089,37 +3418,21 @@
             
             // Sync Master EAN
             document.getElementById('sync-master-ean').addEventListener('click', async function() {
-                try {
-                    const data = await storageManager.getMasterEan();
-                    await githubSyncManager.syncDataWithGithub('master_ean', data);
-                    githubSyncManager.updateLastSyncTimestamps();
-                    showToast('Data Master EAN berhasil disinkronisasi!');
-                } catch (error) {
-                    console.error('Error syncing master EAN data:', error);
-                    showToast('Error sinkronisasi data: ' + error.message, 'error');
-                }
+                await syncManager.syncToGitHub('master_ean', 
+                    document.getElementById('sync-master-ean-progress'));
             });
             
             // Sync from GitHub for Master EAN
             document.getElementById('sync-from-github-master-ean').addEventListener('click', async function() {
-                try {
-                    const data = await githubSyncManager.downloadFromGitHub('master_ean.json') || [];
-                    if (data.length > 0) {
-                        await storageManager.saveMasterEan(data);
-                        await renderMasterEanData();
-                        showToast('Data Master EAN berhasil dimuat dari GitHub!');
-                    } else {
-                        showToast('Tidak ada data Master EAN di GitHub', 'info');
-                    }
-                } catch (error) {
-                    console.error('Error syncing master EAN from GitHub:', error);
-                    showToast('Error memuat data dari GitHub: ' + error.message, 'error');
-                }
+                await syncManager.syncFromGitHub('master_ean', 
+                    document.getElementById('sync-master-ean-progress'));
             });
         }
         
         // Inventory Functions
         function setupInventoryFunctions() {
+            const syncManager = new SyncManager(storageManager, githubSyncManager);
+            
             // Upload Inventory
             document.getElementById('upload-inventory-btn').addEventListener('click', function() {
                 document.getElementById('inventory-file-input').click();
@@ -3151,15 +3464,43 @@
                         qtyOnHand: row['QTY On Hand'] || 0
                     }));
                     
+                    // Update progress
+                    if (progressBar) {
+                        const progressFill = progressBar.querySelector('.progress-bar');
+                        progressFill.style.width = '50%';
+                        progressText.textContent = '50% - Menyimpan data...';
+                    }
+                    
                     // Save data
                     await storageManager.saveInventory(inventoryData);
+                    
+                    if (progressBar) {
+                        const progressFill = progressBar.querySelector('.progress-bar');
+                        progressFill.style.width = '100%';
+                        progressText.textContent = '100% - Selesai!';
+                    }
+                    
                     showToast('Data Inventory berhasil diupload!');
                     await renderInventoryData();
+                    
+                    // Auto sync to GitHub jika enabled
+                    const githubConfig = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
+                    if (githubConfig.autoSyncEnabled) {
+                        setTimeout(() => {
+                            syncManager.syncToGitHub('inventory_data', 
+                                document.getElementById('sync-inventory-progress'));
+                        }, 1000);
+                    }
                 } catch (error) {
                     console.error('Error uploading inventory data:', error);
                     showToast('Error uploading data: ' + error.message, 'error');
                 } finally {
-                    progressBar.style.display = 'none';
+                    setTimeout(() => {
+                        progressBar.style.display = 'none';
+                        const progressFill = progressBar.querySelector('.progress-bar');
+                        progressFill.style.width = '0%';
+                        progressText.textContent = '0%';
+                    }, 2000);
                     e.target.value = '';
                 }
             });
@@ -3241,67 +3582,31 @@
             
             // Sync Inventory
             document.getElementById('sync-inventory').addEventListener('click', async function() {
-                try {
-                    const data = await storageManager.getInventory();
-                    await githubSyncManager.syncDataWithGithub('inventory_data', data);
-                    githubSyncManager.updateLastSyncTimestamps();
-                    showToast('Data Inventory berhasil disinkronisasi!');
-                } catch (error) {
-                    console.error('Error syncing inventory data:', error);
-                    showToast('Error sinkronisasi data: ' + error.message, 'error');
-                }
+                await syncManager.syncToGitHub('inventory_data', 
+                    document.getElementById('sync-inventory-progress'));
             });
             
             // Sync from GitHub for Inventory
             document.getElementById('sync-from-github-inventory').addEventListener('click', async function() {
-                try {
-                    const data = await githubSyncManager.downloadFromGitHub('inventory_data.json') || [];
-                    if (data.length > 0) {
-                        await storageManager.saveInventory(data);
-                        await renderInventoryData();
-                        showToast('Data Inventory berhasil dimuat dari GitHub!');
-                    } else {
-                        showToast('Tidak ada data Inventory di GitHub', 'info');
-                    }
-                } catch (error) {
-                    console.error('Error syncing inventory from GitHub:', error);
-                    showToast('Error memuat data dari GitHub: ' + error.message, 'error');
-                }
+                await syncManager.syncFromGitHub('inventory_data', 
+                    document.getElementById('sync-inventory-progress'));
             });
         }
         
         // Data Count Functions
         function setupDataCountFunctions() {
+            const syncManager = new SyncManager(storageManager, githubSyncManager);
+            
             // Sync Cycle Count
             document.getElementById('sync-cyclecount').addEventListener('click', async function() {
-                try {
-                    const data = await storageManager.getCycleCount();
-                    await githubSyncManager.syncDataWithGithub('cycle_count', data);
-                    githubSyncManager.updateLastSyncTimestamps();
-                    showToast('Data Cycle Count berhasil disinkronisasi!');
-                } catch (error) {
-                    console.error('Error syncing cycle count data:', error);
-                    showToast('Error sinkronisasi data: ' + error.message, 'error');
-                }
+                await syncManager.syncToGitHub('cycle_count', 
+                    document.getElementById('sync-cyclecount-progress'));
             });
             
             // Sync from GitHub for Cycle Count
             document.getElementById('sync-from-github-cyclecount').addEventListener('click', async function() {
-                try {
-                    const data = await githubSyncManager.downloadFromGitHub('cycle_count.json') || [];
-                    if (data.length > 0) {
-                        for (const item of data) {
-                            await storageManager.saveCycleCount(item);
-                        }
-                        await renderDataCountTable();
-                        showToast('Data Cycle Count berhasil dimuat dari GitHub!');
-                    } else {
-                        showToast('Tidak ada data Cycle Count di GitHub', 'info');
-                    }
-                } catch (error) {
-                    console.error('Error syncing cycle count from GitHub:', error);
-                    showToast('Error memuat data dari GitHub: ' + error.message, 'error');
-                }
+                await syncManager.syncFromGitHub('cycle_count', 
+                    document.getElementById('sync-cyclecount-progress'));
             });
             
             // Export Data Count
@@ -3437,6 +3742,13 @@
                     autoSyncInterval = null;
                 }
                 
+                // Reset GitHub connection status
+                const githubStatus = document.getElementById('github-connection-status');
+                if (githubStatus) {
+                    githubStatus.className = 'github-status disconnected';
+                    githubStatus.innerHTML = '<i class="fas fa-times-circle me-1"></i> GitHub: Logout';
+                }
+                
                 sessionStorage.removeItem('currentUser');
                 showLogin();
             });
@@ -3500,6 +3812,9 @@
                     githubSyncManager = new GitHubSyncManager(storageManager, userKey);
                     githubSyncManager.loadLastSyncTimestamps();
                     
+                    // Initialize SyncManager
+                    syncManager = new SyncManager(storageManager, githubSyncManager);
+                    
                     await initApp();
                     
                     setTimeout(testGithubConnection, 1000);
@@ -3515,6 +3830,7 @@
                 userKey = null;
                 storageManager = null;
                 githubSyncManager = null;
+                syncManager = null;
                 if (loginContainer) loginContainer.style.display = 'flex';
                 if (appContainer) appContainer.style.display = 'none';
             }
@@ -3623,28 +3939,37 @@
                     
                     // Save location button
                     if (saveLocationBtn && locationField) {
-                        saveLocationBtn.addEventListener('click', function() {
+                        saveLocationBtn.addEventListener('click', async function() {
                             const location = locationField.value.trim();
                             if (location) {
-                                sessionStorage.setItem('currentLocation', location);
+                                // Cari di master data untuk validasi
+                                const masterLocationData = await storageManager.getMasterLocation();
+                                const foundLocation = masterLocationData.find(loc => 
+                                    loc.location === location || loc.validationCode === location
+                                );
+                                
+                                let actualLocation = location;
+                                if (foundLocation) {
+                                    actualLocation = foundLocation.location; // Gunakan location code dari master
+                                    locationField.value = actualLocation; // Update field dengan location code yang benar
+                                }
+                                
+                                sessionStorage.setItem('currentLocation', actualLocation);
                                 if (currentLocationDisplay) {
                                     currentLocationDisplay.style.display = 'block';
-                                }
-                                if (currentLocationName) {
-                                    currentLocationName.textContent = location;
-                                }
-                                
-                                // Count SKUs for this location
-                                if (storageManager) {
-                                    storageManager.getInventory().then(inventoryData => {
-                                        const locationSKUs = inventoryData.filter(item => item.locationId === location);
-                                        if (currentLocationSkuCount) {
-                                            currentLocationSkuCount.textContent = locationSKUs.length;
-                                        }
-                                    });
+                                    currentLocationName.textContent = actualLocation;
+                                    currentLocationName.className = `fw-bold ${foundLocation ? 'text-success' : 'text-danger'}`;
                                 }
                                 
-                                showToast(`Lokasi ${location} berhasil disimpan`);
+                                // Count SKUs untuk lokasi ini
+                                const inventoryData = await storageManager.getInventory();
+                                const locationSKUs = inventoryData.filter(item => item.locationId === actualLocation);
+                                if (currentLocationSkuCount) {
+                                    currentLocationSkuCount.textContent = locationSKUs.length;
+                                }
+                                
+                                const status = foundLocation ? 'valid' : 'tidak valid';
+                                showToast(`Lokasi ${actualLocation} (${status}) berhasil disimpan`);
                             } else {
                                 showToast('Harap masukkan kode lokasi', 'error');
                             }
@@ -3655,21 +3980,24 @@
                     const savedLocation = sessionStorage.getItem('currentLocation');
                     if (savedLocation && locationField) {
                         locationField.value = savedLocation;
+                        
+                        // Cari di master data untuk validasi
+                        const masterLocationData = await storageManager.getMasterLocation();
+                        const foundLocation = masterLocationData.find(loc => 
+                            loc.location === savedLocation || loc.validationCode === savedLocation
+                        );
+                        
                         if (currentLocationDisplay) {
                             currentLocationDisplay.style.display = 'block';
-                        }
-                        if (currentLocationName) {
                             currentLocationName.textContent = savedLocation;
+                            currentLocationName.className = `fw-bold ${foundLocation ? 'text-success' : 'text-danger'}`;
                         }
                         
-                        // Count SKUs for this location
-                        if (storageManager) {
-                            storageManager.getInventory().then(inventoryData => {
-                                const locationSKUs = inventoryData.filter(item => item.locationId === savedLocation);
-                                if (currentLocationSkuCount) {
-                                    currentLocationSkuCount.textContent = locationSKUs.length;
-                                }
-                            });
+                        // Count SKUs untuk lokasi ini
+                        const inventoryData = await storageManager.getInventory();
+                        const locationSKUs = inventoryData.filter(item => item.locationId === savedLocation);
+                        if (currentLocationSkuCount) {
+                            currentLocationSkuCount.textContent = locationSKUs.length;
                         }
                     }
                     
