@@ -1425,7 +1425,7 @@
 
             async getFileSha(owner, repo, path, branch = 'main') {
                 try {
-                    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
+                    const url = `https://api.github.com/repos/${owner}/${repo}/${path}?ref=${branch}`;
                     const response = await fetch(url, {
                         headers: {
                             'Authorization': `token ${this.config.token}`,
