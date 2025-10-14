@@ -1575,7 +1575,7 @@
                     await this.syncDataWithGithub('cycle_count', allData.cycleCount);
                     await this.syncDataWithGithub('master_location', allData.masterLocation);
                     await this.syncDataWithGithub('master_ean', allData.masterEan);
-                    await this.syncDataWithGithub('inventory_data', allData.inventory);
+                    await this.syncDataWithGithub('InventoryBalance', allData.inventory);
                     
                     // Update last sync timestamps
                     this.updateLastSyncTimestamps();
@@ -1632,7 +1632,7 @@
                     'cycle_count': 'cycle_count.json',
                     'master_location': 'master_location.json',
                     'master_ean': 'master_ean.json',
-                    'inventory_data': 'InventoryBalance.json'
+                    'InventoryBalance': 'InventoryBalance.json'
                 };
                 
                 return filenames[dataType] || `${dataType}.json`;
@@ -2457,7 +2457,7 @@
                         case 'master_ean':
                             data = await this.storageManager.getMasterEan();
                             break;
-                        case 'inventory_data':
+                        case 'InventoryBalance':
                             data = await this.storageManager.getInventory();
                             break;
                         default:
@@ -2554,7 +2554,7 @@
                             case 'master_ean':
                                 await this.storageManager.saveMasterEan(data);
                                 break;
-                            case 'inventory_data':
+                            case 'InventoryBalance':
                                 await this.storageManager.saveInventory(data);
                                 break;
                         }
@@ -2625,7 +2625,7 @@
                     case 'master_ean':
                         renderMasterEanData();
                         break;
-                    case 'inventory_data':
+                    case 'InventoryBalance':
                         renderInventoryData();
                         break;
                 }
@@ -3871,7 +3871,7 @@
                     const githubConfig = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
                     if (githubConfig.autoSyncEnabled) {
                         setTimeout(() => {
-                            syncManager.syncToGitHub('inventory_data', 
+                            syncManager.syncToGitHub('InventoryBalance', 
                                 document.getElementById('sync-inventory-progress'));
                         }, 1000);
                     }
@@ -3974,13 +3974,13 @@
             
             // Sync Inventory to GitHub
             document.getElementById('sync-inventory').addEventListener('click', async function() {
-                await syncManager.syncToGitHub('inventory_data', 
+                await syncManager.syncToGitHub('InventoryBalance', 
                     document.getElementById('sync-inventory-progress'));
             });
             
             // Sync from GitHub for Inventory
             document.getElementById('sync-from-github-inventory').addEventListener('click', async function() {
-                await syncManager.syncFromGitHub('inventory_data', 
+                await syncManager.syncFromGitHub('InventoryBalance', 
                     document.getElementById('sync-inventory-progress'));
             });
         }
