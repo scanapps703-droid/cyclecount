@@ -9,7 +9,7 @@
     <!-- SheetJS Library untuk Excel -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
-        /* CSS yang sama seperti sebelumnya */
+        /* CSS styles tetap sama seperti sebelumnya */
         :root {
             --primary: #ff2d20;
             --secondary: #47cdff;
@@ -827,13 +827,15 @@
                         <div class="row mb-4">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label for="location" class="form-label">Location</label>
+                                    <label for="location" class="form-label">Validation Code</label>
                                     <div class="input-group">
                                         <input type="text" class="form-control" id="location" name="location" required placeholder="Masukkan kode validasi lokasi">
                                         <button type="button" class="btn btn-primary" id="save-location-btn">
                                             <i class="fas fa-save"></i> Simpan
                                         </button>
                                     </div>
+                                    <div class="form-text">Masukkan Validation Code, akan otomatis berubah menjadi Location Code</div>
+                                </div>
                                 
                                 <!-- Current Location Display -->
                                 <div class="current-location-display" id="current-location-display" style="display: none;">
@@ -1410,7 +1412,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // ==============================
-        // GITHUB SYNC MANAGER - MODIFIED
+        // GITHUB SYNC MANAGER - FIXED
         // ==============================
         
         class GitHubSyncManager {
@@ -1423,7 +1425,7 @@
 
             async getFileSha(owner, repo, path, branch = 'main') {
                 try {
-                    const url = `https://api.github.com/repos/${owner}/${repo}/${path}?ref=${branch}`;
+                    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
                     const response = await fetch(url, {
                         headers: {
                             'Authorization': `token ${this.config.token}`,
@@ -1445,7 +1447,7 @@
                 }
             }
 
-            async uploadToGitHub(path, data) {
+            async uploadToGitHub(path, data, retryCount = 2) {
                 if (!this.config.token || !this.config.owner || !this.config.repo) {
                     throw new Error('GitHub configuration incomplete');
                 }
@@ -1456,7 +1458,13 @@
                     const branch = this.config.branch || 'main';
 
                     // Get SHA if file exists
-                    const sha = await this.getFileSha(this.config.owner, this.config.repo, path, branch);
+                    let sha = null;
+                    try {
+                        sha = await this.getFileSha(this.config.owner, this.config.repo, path, branch);
+                    } catch (error) {
+                        console.warn('Error getting file SHA, uploading as new file:', error);
+                        // Continue without SHA - will create new file
+                    }
 
                     const url = `https://api.github.com/repos/${this.config.owner}/${this.config.repo}/contents/${path}`;
                     const body = {
@@ -1480,6 +1488,14 @@
                     });
 
                     if (!response.ok) {
+                        // If we get a 409 and have retries left, try again with fresh SHA
+                        if (response.status === 409 && retryCount > 0) {
+                            console.log(`Retrying upload for ${path} due to 409 conflict... (${retryCount} retries left)`);
+                            // Wait a bit before retrying
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            return this.uploadToGitHub(path, data, retryCount - 1);
+                        }
+                        
                         const errorData = await response.json();
                         throw new Error(`GitHub API error: ${response.status} - ${errorData.message || response.statusText}`);
                     }
@@ -1518,10 +1534,22 @@
                     }
 
                     const fileData = await response.json();
+                    
+                    // Handle case where content might be empty
+                    if (!fileData.content) {
+                        return null;
+                    }
+                    
                     const content = decodeURIComponent(escape(atob(fileData.content)));
                     return JSON.parse(content);
                 } catch (error) {
                     console.error('Error downloading from GitHub:', error);
+                    
+                    // Return empty array instead of throwing for non-existent files
+                    if (error.message.includes('404')) {
+                        return null;
+                    }
+                    
                     throw error;
                 }
             }
@@ -1543,6 +1571,7 @@
                     
                     const allData = await this.storageManager.exportAllData();
                     
+                    // Sync each data type sequentially to avoid rate limiting
                     await this.syncDataWithGithub('cycle_count', allData.cycleCount);
                     await this.syncDataWithGithub('master_location', allData.masterLocation);
                     await this.syncDataWithGithub('master_ean', allData.masterEan);
@@ -1564,7 +1593,7 @@
                 try {
                     showToast('Memuat data dari GitHub...', 'info');
                     
-                    // Download data dari GitHub
+                    // Download data dari GitHub - handle cases where files don't exist
                     const cycleCountData = await this.downloadFromGitHub('cycle_count.json') || [];
                     const masterLocationData = await this.downloadFromGitHub('master_location.json') || [];
                     const masterEanData = await this.downloadFromGitHub('master_ean.json') || [];
@@ -1603,7 +1632,7 @@
                     'cycle_count': 'cycle_count.json',
                     'master_location': 'master_location.json',
                     'master_ean': 'master_ean.json',
-                    'inventory_data': 'InventoryBalance.json'  // Changed from inventory_data.json
+                    'inventory_data': 'InventoryBalance.json'
                 };
                 
                 return filenames[dataType] || `${dataType}.json`;
@@ -1687,404 +1716,7 @@
         }
 
         // ==============================
-        // SYNC MANAGER - MODIFIED
-        // ==============================
-        
-        class SyncManager {
-            constructor(storageManager, githubSyncManager) {
-                this.storageManager = storageManager;
-                this.githubSyncManager = githubSyncManager;
-                this.isSyncing = false;
-            }
-
-            async syncToGitHub(dataType, progressElement = null) {
-                if (this.isSyncing) {
-                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
-                    return;
-                }
-
-                // Check GitHub connection
-                if (!this.githubSyncManager.isConnected) {
-                    const isConnected = await this.githubSyncManager.testConnection();
-                    if (!isConnected) {
-                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
-                        return;
-                    }
-                }
-
-                this.isSyncing = true;
-                const buttonId = `sync-${dataType.replace('_', '-')}`;
-                this.setButtonState(buttonId, true);
-
-                try {
-                    let data;
-                    switch(dataType) {
-                        case 'cycle_count':
-                            data = await this.storageManager.getCycleCount();
-                            break;
-                        case 'master_location':
-                            data = await this.storageManager.getMasterLocation();
-                            break;
-                        case 'master_ean':
-                            data = await this.storageManager.getMasterEan();
-                            break;
-                        case 'inventory_data':
-                            data = await this.storageManager.getInventory();
-                            break;
-                        default:
-                            throw new Error('Tipe data tidak dikenali');
-                    }
-
-                    if (progressElement) {
-                        progressElement.style.display = 'block';
-                        const progressBar = progressElement.querySelector('.progress-bar');
-                        progressBar.style.width = '50%';
-                    }
-
-                    await this.githubSyncManager.syncDataWithGithub(dataType, data);
-                    
-                    if (progressElement) {
-                        const progressBar = progressElement.querySelector('.progress-bar');
-                        progressBar.style.width = '100%';
-                    }
-
-                    this.githubSyncManager.updateLastSyncTimestamps();
-                    showToast(`Data ${dataType} berhasil disinkronisasi ke GitHub!`);
-                    
-                    // Setelah push ke GitHub, lakukan pull dari GitHub untuk sinkronisasi
-                    await this.syncFromGitHub(dataType, progressElement);
-                    
-                    // Tunggu sebentar sebelum menyembunyikan progress bar
-                    setTimeout(() => {
-                        if (progressElement) {
-                            progressElement.style.display = 'none';
-                            const progressBar = progressElement.querySelector('.progress-bar');
-                            progressBar.style.width = '0%';
-                        }
-                    }, 1000);
-
-                } catch (error) {
-                    console.error(`Error syncing ${dataType}:`, error);
-                    showToast(`Error sinkronisasi ${dataType}: ${error.message}`, 'error');
-                    
-                    if (progressElement) {
-                        progressElement.style.display = 'none';
-                        const progressBar = progressElement.querySelector('.progress-bar');
-                        progressBar.style.width = '0%';
-                    }
-                } finally {
-                    this.isSyncing = false;
-                    this.setButtonState(buttonId, false);
-                }
-            }
-
-            async syncFromGitHub(dataType, progressElement = null) {
-                if (this.isSyncing) {
-                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
-                    return;
-                }
-
-                // Check GitHub connection
-                if (!this.githubSyncManager.isConnected) {
-                    const isConnected = await this.githubSyncManager.testConnection();
-                    if (!isConnected) {
-                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
-                        return;
-                    }
-                }
-
-                this.isSyncing = true;
-                const buttonId = `sync-from-github-${dataType.replace('_', '-')}`;
-                this.setButtonState(buttonId, true);
-
-                try {
-                    if (progressElement) {
-                        progressElement.style.display = 'block';
-                        const progressBar = progressElement.querySelector('.progress-bar');
-                        progressBar.style.width = '30%';
-                    }
-
-                    // Jika IndexDB kosong, ambil data dari GitHub
-                    let data = [];
-                    let localData = [];
-                    
-                    switch(dataType) {
-                        case 'cycle_count':
-                            localData = await this.storageManager.getCycleCount();
-                            break;
-                        case 'master_location':
-                            localData = await this.storageManager.getMasterLocation();
-                            break;
-                        case 'master_ean':
-                            localData = await this.storageManager.getMasterEan();
-                            break;
-                        case 'inventory_data':
-                            localData = await this.storageManager.getInventory();
-                            break;
-                    }
-                    
-                    // Jika data lokal kosong, ambil dari GitHub
-                    if (localData.length === 0) {
-                        data = await this.githubSyncManager.downloadFromGitHub(
-                            this.githubSyncManager.getFilenameForDataType(dataType)
-                        ) || [];
-                        
-                        if (data.length > 0) {
-                            if (progressElement) {
-                                const progressBar = progressElement.querySelector('.progress-bar');
-                                progressBar.style.width = '70%';
-                            }
-                            
-                            switch(dataType) {
-                                case 'cycle_count':
-                                    for (const item of data) {
-                                        await this.storageManager.saveCycleCount(item);
-                                    }
-                                    break;
-                                case 'master_location':
-                                    await this.storageManager.saveMasterLocation(data);
-                                    break;
-                                case 'master_ean':
-                                    await this.storageManager.saveMasterEan(data);
-                                    break;
-                                case 'inventory_data':
-                                    await this.storageManager.saveInventory(data);
-                                    break;
-                            }
-                        }
-                    } else {
-                        // Jika ada data lokal, ambil dari GitHub untuk sinkronisasi
-                        data = await this.githubSyncManager.downloadFromGitHub(
-                            this.githubSyncManager.getFilenameForDataType(dataType)
-                        ) || [];
-                        
-                        if (data.length > 0) {
-                            // Merge data - prefer local data for conflicts
-                            const mergedData = this.mergeData(localData, data, dataType);
-                            
-                            switch(dataType) {
-                                case 'cycle_count':
-                                    for (const item of mergedData) {
-                                        await this.storageManager.saveCycleCount(item);
-                                    }
-                                    break;
-                                case 'master_location':
-                                    await this.storageManager.saveMasterLocation(mergedData);
-                                    break;
-                                case 'master_ean':
-                                    await this.storageManager.saveMasterEan(mergedData);
-                                    break;
-                                case 'inventory_data':
-                                    await this.storageManager.saveInventory(mergedData);
-                                    break;
-                            }
-                        }
-                    }
-
-                    if (progressElement) {
-                        const progressBar = progressElement.querySelector('.progress-bar');
-                        progressBar.style.width = '100%';
-                    }
-
-                    if (data.length > 0) {
-                        showToast(`Data ${dataType} berhasil disinkronisasi dari GitHub!`);
-                    } else {
-                        showToast(`Tidak ada data ${dataType} di GitHub`, 'info');
-                    }
-                    
-                    // Refresh tampilan data
-                    this.refreshDataDisplay(dataType);
-                    
-                    setTimeout(() => {
-                        if (progressElement) {
-                            progressElement.style.display = 'none';
-                            const progressBar = progressElement.querySelector('.progress-bar');
-                            progressBar.style.width = '0%';
-                        }
-                    }, 1000);
-                } catch (error) {
-                    console.error(`Error syncing ${dataType} from GitHub:`, error);
-                    showToast(`Error memuat data ${dataType} dari GitHub: ${error.message}`, 'error');
-                    
-                    if (progressElement) {
-                        progressElement.style.display = 'none';
-                        const progressBar = progressElement.querySelector('.progress-bar');
-                        progressBar.style.width = '0%';
-                    }
-                } finally {
-                    this.isSyncing = false;
-                    this.setButtonState(buttonId, false);
-                }
-            }
-
-            // Merge data from two sources, preferring local data
-            mergeData(localData, remoteData, dataType) {
-                const merged = [...remoteData];
-                const keyMap = new Map();
-                
-                // Create a map of remote data for quick lookup
-                remoteData.forEach(item => {
-                    let key;
-                    switch(dataType) {
-                        case 'cycle_count':
-                            key = `${item.location}-${item.ean}-${item.countType}`;
-                            break;
-                        case 'master_location':
-                            key = item.validationCode;
-                            break;
-                        case 'master_ean':
-                            key = item.ean;
-                            break;
-                        case 'inventory_data':
-                            key = `${item.locationId}-${item.sku}`;
-                            break;
-                        default:
-                            key = item.id;
-                    }
-                    keyMap.set(key, item);
-                });
-                
-                // Add local data that doesn't exist in remote
-                localData.forEach(item => {
-                    let key;
-                    switch(dataType) {
-                        case 'cycle_count':
-                            key = `${item.location}-${item.ean}-${item.countType}`;
-                            break;
-                        case 'master_location':
-                            key = item.validationCode;
-                            break;
-                        case 'master_ean':
-                            key = item.ean;
-                            break;
-                        case 'inventory_data':
-                            key = `${item.locationId}-${item.sku}`;
-                            break;
-                        default:
-                            key = item.id;
-                    }
-                    
-                    if (!keyMap.has(key)) {
-                        merged.push(item);
-                    }
-                });
-                
-                return merged;
-            }
-
-            setButtonState(buttonId, isLoading) {
-                const button = document.getElementById(buttonId);
-                if (!button) return;
-
-                if (isLoading) {
-                    button.disabled = true;
-                    const originalHTML = button.innerHTML;
-                    button.setAttribute('data-original-html', originalHTML);
-                    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
-                } else {
-                    button.disabled = false;
-                    const originalHTML = button.getAttribute('data-original-html');
-                    if (originalHTML) {
-                        button.innerHTML = originalHTML;
-                    }
-                }
-            }
-
-            refreshDataDisplay(dataType) {
-                switch(dataType) {
-                    case 'cycle_count':
-                        renderDataCountTable();
-                        break;
-                    case 'master_location':
-                        renderMasterLocationData();
-                        break;
-                    case 'master_ean':
-                        renderMasterEanData();
-                        break;
-                    case 'inventory_data':
-                        renderInventoryData();
-                        break;
-                }
-            }
-
-            async syncAllToGitHub() {
-                if (this.isSyncing) {
-                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
-                    return;
-                }
-
-                // Check GitHub connection
-                if (!this.githubSyncManager.isConnected) {
-                    const isConnected = await this.githubSyncManager.testConnection();
-                    if (!isConnected) {
-                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
-                        return;
-                    }
-                }
-
-                this.isSyncing = true;
-                showToast('Memulai sinkronisasi semua data ke GitHub...', 'info');
-
-                try {
-                    await this.githubSyncManager.syncAllDataToGitHub();
-                    
-                    // Setelah push ke GitHub, lakukan pull untuk sinkronisasi
-                    await this.githubSyncManager.syncFromGitHub();
-                    
-                    // Refresh semua tampilan data
-                    await renderDataCountTable();
-                    await renderMasterLocationData();
-                    await renderMasterEanData();
-                    await renderInventoryData();
-                    
-                    showToast('Semua data berhasil disinkronisasi!');
-                } catch (error) {
-                    console.error('Error during full sync:', error);
-                    showToast(`Error sinkronisasi: ${error.message}`, 'error');
-                } finally {
-                    this.isSyncing = false;
-                }
-            }
-
-            async syncAllFromGitHub() {
-                if (this.isSyncing) {
-                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
-                    return;
-                }
-
-                // Check GitHub connection
-                if (!this.githubSyncManager.isConnected) {
-                    const isConnected = await this.githubSyncManager.testConnection();
-                    if (!isConnected) {
-                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
-                        return;
-                    }
-                }
-
-                this.isSyncing = true;
-                showToast('Memuat semua data dari GitHub...', 'info');
-
-                try {
-                    await this.githubSyncManager.syncFromGitHub();
-                    
-                    // Refresh semua tampilan data
-                    await renderDataCountTable();
-                    await renderMasterLocationData();
-                    await renderMasterEanData();
-                    await renderInventoryData();
-                    
-                    showToast('Semua data berhasil dimuat dari GitHub!');
-                } catch (error) {
-                    console.error('Error during full sync from GitHub:', error);
-                    showToast(`Error memuat data: ${error.message}`, 'error');
-                } finally {
-                    this.isSyncing = false;
-                }
-            }
-        }
-
-        // ==============================
-        // HYBRID STORAGE MANAGER - SAME AS BEFORE
+        // HYBRID STORAGE MANAGER
         // ==============================
         
         class HybridStorageManager {
@@ -2784,6 +2416,295 @@
         }
 
         // ==============================
+        // SYNC MANAGER - FIXED
+        // ==============================
+        
+        class SyncManager {
+            constructor(storageManager, githubSyncManager) {
+                this.storageManager = storageManager;
+                this.githubSyncManager = githubSyncManager;
+                this.isSyncing = false;
+            }
+
+            async syncToGitHub(dataType, progressElement = null) {
+                if (this.isSyncing) {
+                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
+                    return;
+                }
+
+                // Check GitHub connection
+                if (!this.githubSyncManager.isConnected) {
+                    const isConnected = await this.githubSyncManager.testConnection();
+                    if (!isConnected) {
+                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
+                        return;
+                    }
+                }
+
+                this.isSyncing = true;
+                const buttonId = `sync-${dataType.replace('_', '-')}`;
+                this.setButtonState(buttonId, true);
+
+                try {
+                    let data;
+                    switch(dataType) {
+                        case 'cycle_count':
+                            data = await this.storageManager.getCycleCount();
+                            break;
+                        case 'master_location':
+                            data = await this.storageManager.getMasterLocation();
+                            break;
+                        case 'master_ean':
+                            data = await this.storageManager.getMasterEan();
+                            break;
+                        case 'inventory_data':
+                            data = await this.storageManager.getInventory();
+                            break;
+                        default:
+                            throw new Error('Tipe data tidak dikenali');
+                    }
+
+                    if (progressElement) {
+                        progressElement.style.display = 'block';
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '50%';
+                    }
+
+                    await this.githubSyncManager.syncDataWithGithub(dataType, data);
+                    
+                    if (progressElement) {
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '100%';
+                    }
+
+                    this.githubSyncManager.updateLastSyncTimestamps();
+                    showToast(`Data ${dataType} berhasil disinkronisasi ke GitHub!`);
+                    
+                    // Tunggu sebentar sebelum menyembunyikan progress bar
+                    setTimeout(() => {
+                        if (progressElement) {
+                            progressElement.style.display = 'none';
+                            const progressBar = progressElement.querySelector('.progress-bar');
+                            progressBar.style.width = '0%';
+                        }
+                    }, 1000);
+
+                } catch (error) {
+                    console.error(`Error syncing ${dataType}:`, error);
+                    showToast(`Error sinkronisasi ${dataType}: ${error.message}`, 'error');
+                    
+                    if (progressElement) {
+                        progressElement.style.display = 'none';
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '0%';
+                    }
+                } finally {
+                    this.isSyncing = false;
+                    this.setButtonState(buttonId, false);
+                }
+            }
+
+            async syncFromGitHub(dataType, progressElement = null) {
+                if (this.isSyncing) {
+                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
+                    return;
+                }
+
+                // Check GitHub connection
+                if (!this.githubSyncManager.isConnected) {
+                    const isConnected = await this.githubSyncManager.testConnection();
+                    if (!isConnected) {
+                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
+                        return;
+                    }
+                }
+
+                this.isSyncing = true;
+                const buttonId = `sync-from-github-${dataType.replace('_', '-')}`;
+                this.setButtonState(buttonId, true);
+
+                try {
+                    if (progressElement) {
+                        progressElement.style.display = 'block';
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '30%';
+                    }
+
+                    // Download data dari GitHub
+                    const data = await this.githubSyncManager.downloadFromGitHub(
+                        this.githubSyncManager.getFilenameForDataType(dataType)
+                    ) || [];
+                    
+                    if (data.length > 0) {
+                        if (progressElement) {
+                            const progressBar = progressElement.querySelector('.progress-bar');
+                            progressBar.style.width = '70%';
+                        }
+                        
+                        // Save data berdasarkan tipe
+                        switch(dataType) {
+                            case 'cycle_count':
+                                for (const item of data) {
+                                    await this.storageManager.saveCycleCount(item);
+                                }
+                                break;
+                            case 'master_location':
+                                await this.storageManager.saveMasterLocation(data);
+                                break;
+                            case 'master_ean':
+                                await this.storageManager.saveMasterEan(data);
+                                break;
+                            case 'inventory_data':
+                                await this.storageManager.saveInventory(data);
+                                break;
+                        }
+                    }
+
+                    if (progressElement) {
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '100%';
+                    }
+
+                    if (data.length > 0) {
+                        showToast(`Data ${dataType} berhasil disinkronisasi dari GitHub!`);
+                    } else {
+                        showToast(`Tidak ada data ${dataType} di GitHub`, 'info');
+                    }
+                    
+                    // Refresh tampilan data
+                    this.refreshDataDisplay(dataType);
+                    
+                    setTimeout(() => {
+                        if (progressElement) {
+                            progressElement.style.display = 'none';
+                            const progressBar = progressElement.querySelector('.progress-bar');
+                            progressBar.style.width = '0%';
+                        }
+                    }, 1000);
+                } catch (error) {
+                    console.error(`Error syncing ${dataType} from GitHub:`, error);
+                    showToast(`Error memuat data ${dataType} dari GitHub: ${error.message}`, 'error');
+                    
+                    if (progressElement) {
+                        progressElement.style.display = 'none';
+                        const progressBar = progressElement.querySelector('.progress-bar');
+                        progressBar.style.width = '0%';
+                    }
+                } finally {
+                    this.isSyncing = false;
+                    this.setButtonState(buttonId, false);
+                }
+            }
+
+            setButtonState(buttonId, isLoading) {
+                const button = document.getElementById(buttonId);
+                if (!button) return;
+
+                if (isLoading) {
+                    button.disabled = true;
+                    const originalHTML = button.innerHTML;
+                    button.setAttribute('data-original-html', originalHTML);
+                    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+                } else {
+                    button.disabled = false;
+                    const originalHTML = button.getAttribute('data-original-html');
+                    if (originalHTML) {
+                        button.innerHTML = originalHTML;
+                    }
+                }
+            }
+
+            refreshDataDisplay(dataType) {
+                switch(dataType) {
+                    case 'cycle_count':
+                        renderDataCountTable();
+                        break;
+                    case 'master_location':
+                        renderMasterLocationData();
+                        break;
+                    case 'master_ean':
+                        renderMasterEanData();
+                        break;
+                    case 'inventory_data':
+                        renderInventoryData();
+                        break;
+                }
+            }
+
+            async syncAllToGitHub() {
+                if (this.isSyncing) {
+                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
+                    return;
+                }
+
+                // Check GitHub connection
+                if (!this.githubSyncManager.isConnected) {
+                    const isConnected = await this.githubSyncManager.testConnection();
+                    if (!isConnected) {
+                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
+                        return;
+                    }
+                }
+
+                this.isSyncing = true;
+                showToast('Memulai sinkronisasi semua data ke GitHub...', 'info');
+
+                try {
+                    await this.githubSyncManager.syncAllDataToGitHub();
+                    
+                    // Refresh semua tampilan data
+                    await renderDataCountTable();
+                    await renderMasterLocationData();
+                    await renderMasterEanData();
+                    await renderInventoryData();
+                    
+                    showToast('Semua data berhasil disinkronisasi!');
+                } catch (error) {
+                    console.error('Error during full sync:', error);
+                    showToast(`Error sinkronisasi: ${error.message}`, 'error');
+                } finally {
+                    this.isSyncing = false;
+                }
+            }
+
+            async syncAllFromGitHub() {
+                if (this.isSyncing) {
+                    showToast('Sinkronisasi sedang berjalan, harap tunggu...', 'info');
+                    return;
+                }
+
+                // Check GitHub connection
+                if (!this.githubSyncManager.isConnected) {
+                    const isConnected = await this.githubSyncManager.testConnection();
+                    if (!isConnected) {
+                        showToast('GitHub tidak terhubung. Silakan periksa konfigurasi GitHub.', 'error');
+                        return;
+                    }
+                }
+
+                this.isSyncing = true;
+                showToast('Memuat semua data dari GitHub...', 'info');
+
+                try {
+                    await this.githubSyncManager.syncFromGitHub();
+                    
+                    // Refresh semua tampilan data
+                    await renderDataCountTable();
+                    await renderMasterLocationData();
+                    await renderMasterEanData();
+                    await renderInventoryData();
+                    
+                    showToast('Semua data berhasil dimuat dari GitHub!');
+                } catch (error) {
+                    console.error('Error during full sync from GitHub:', error);
+                    showToast(`Error memuat data: ${error.message}`, 'error');
+                } finally {
+                    this.isSyncing = false;
+                }
+            }
+        }
+
+        // ==============================
         // PAGINATION MANAGER
         // ==============================
         
@@ -3124,6 +3045,10 @@
             });
         }
         
+        // ==============================
+        // RENDER FUNCTIONS
+        // ==============================
+        
         async function renderDataCountTable() {
             const dataCountTable = document.getElementById('data-count-table') ? document.getElementById('data-count-table').querySelector('tbody') : null;
             const startDateFilter = document.getElementById('start-date');
@@ -3384,6 +3309,10 @@
             }
         }
         
+        // ==============================
+        // DELETE FUNCTIONS
+        // ==============================
+        
         async function deleteDataCountItem(id) {
             if (!confirm('Apakah Anda yakin ingin menghapus data ini?')) {
                 return;
@@ -3542,7 +3471,7 @@
         }
         
         // ==============================
-        // UPLOAD, DOWNLOAD, ADD, DELETE FUNCTIONS
+        // UPLOAD, DOWNLOAD, ADD FUNCTIONS
         // ==============================
         
         // Function to read Excel file
@@ -3584,8 +3513,6 @@
         
         // Master Location Functions
         function setupMasterLocationFunctions() {
-            const syncManager = new SyncManager(storageManager, githubSyncManager);
-            
             // Upload Master Location
             document.getElementById('upload-master-location-btn').addEventListener('click', function() {
                 document.getElementById('master-location-file-input').click();
@@ -3738,8 +3665,6 @@
         
         // Master EAN Functions
         function setupMasterEanFunctions() {
-            const syncManager = new SyncManager(storageManager, githubSyncManager);
-            
             // Upload Master EAN
             document.getElementById('upload-master-ean-btn').addEventListener('click', function() {
                 document.getElementById('master-ean-file-input').click();
@@ -3892,8 +3817,6 @@
         
         // Inventory Functions
         function setupInventoryFunctions() {
-            const syncManager = new SyncManager(storageManager, githubSyncManager);
-            
             // Upload Inventory
             document.getElementById('upload-inventory-btn').addEventListener('click', function() {
                 document.getElementById('inventory-file-input').click();
@@ -4021,16 +3944,24 @@
                 const sku = prompt('Masukkan SKU:');
                 if (sku === null) return;
                 
+                const skuDescrL = prompt('Masukkan SKU Description (opsional):');
+                const traceId = prompt('Masukkan Trace ID (opsional):');
+                const qtyOnHand = parseInt(prompt('Masukkan QTY On Hand:') || '0');
+                
                 if (!locationId || !sku) {
                     showToast('Location ID dan SKU harus diisi!', 'error');
                     return;
                 }
                 
-                const skuDescrL = prompt('Masukkan SKU Description (opsional):') || '';
-                const traceId = prompt('Masukkan Trace ID (opsional):') || '';
-                const qtyOnHand = parseInt(prompt('Masukkan Qty On Hand:') || '0');
+                const inventoryItem = {
+                    locationId,
+                    sku,
+                    skuDescrL: skuDescrL || '',
+                    traceId: traceId || '',
+                    qtyOnHand
+                };
                 
-                storageManager.saveInventory({ locationId, sku, skuDescrL, traceId, qtyOnHand })
+                storageManager.saveInventory(inventoryItem)
                     .then(() => {
                         showToast('Data Inventory berhasil ditambahkan!');
                         renderInventoryData();
@@ -4056,25 +3987,6 @@
         
         // Data Count Functions
         function setupDataCountFunctions() {
-            const syncManager = new SyncManager(storageManager, githubSyncManager);
-            
-            // Sync Cycle Count to GitHub
-            document.getElementById('sync-cyclecount').addEventListener('click', async function() {
-                await syncManager.syncToGitHub('cycle_count', 
-                    document.getElementById('sync-cyclecount-progress'));
-            });
-            
-            // Sync from GitHub for Cycle Count
-            document.getElementById('sync-from-github-cyclecount').addEventListener('click', async function() {
-                await syncManager.syncFromGitHub('cycle_count', 
-                    document.getElementById('sync-cyclecount-progress'));
-            });
-            
-            // Sync All Data
-            document.getElementById('sync-all-data').addEventListener('click', async function() {
-                await syncManager.syncAllToGitHub();
-            });
-            
             // Export Data Count
             document.getElementById('export-btn').addEventListener('click', async function() {
                 try {
@@ -4086,15 +3998,14 @@
                     
                     // Transform data for Excel
                     const excelData = data.map(item => ({
-                        'Timestamp': new Date(item.timestamp).toLocaleString('id-ID'),
-                        'Location': item.location,
+                        'Tanggal': new Date(item.timestamp).toLocaleString('id-ID'),
+                        'Lokasi': item.location,
                         'EAN': item.ean,
                         'SKU': item.sku,
-                        'Description': item.description,
-                        'Trace ID': item.traceId,
                         'Count Type': item.countType,
                         'Qty': item.qty,
-                        'Remark': item.remark
+                        'Remark': item.remark || '',
+                        'Trace ID': item.traceId || ''
                     }));
                     
                     const success = downloadAsExcel(excelData, 'cycle_count_data.xlsx');
@@ -4113,30 +4024,24 @@
             document.getElementById('delete-selected-btn').addEventListener('click', async function() {
                 const selectedCheckboxes = document.querySelectorAll('.data-checkbox:checked');
                 if (selectedCheckboxes.length === 0) {
-                    showToast('Tidak ada data yang dipilih', 'info');
+                    showToast('Pilih data yang akan dihapus', 'info');
                     return;
                 }
                 
-                if (!confirm(`Apakah Anda yakin ingin menghapus ${selectedCheckboxes.length} data yang dipilih?`)) {
+                if (!confirm(`Apakah Anda yakin ingin menghapus ${selectedCheckboxes.length} data?`)) {
                     return;
                 }
                 
-                const ids = Array.from(selectedCheckboxes).map(checkbox => checkbox.getAttribute('data-id'));
+                const idsToDelete = Array.from(selectedCheckboxes).map(checkbox => checkbox.getAttribute('data-id'));
                 
                 try {
-                    await storageManager.deleteMultipleCycleCount(ids);
+                    await storageManager.deleteMultipleCycleCount(idsToDelete);
                     await renderDataCountTable();
-                    showToast(`${ids.length} data berhasil dihapus`);
+                    showToast(`${idsToDelete.length} data berhasil dihapus`);
                 } catch (error) {
                     console.error('Error deleting selected data count items:', error);
                     showToast('Error menghapus data: ' + error.message, 'error');
                 }
-            });
-            
-            // Filter Data Count
-            document.getElementById('filter-btn').addEventListener('click', function() {
-                paginationManager.resetPagination('data-count');
-                renderDataCountTable();
             });
             
             // Select All Checkbox
@@ -4146,437 +4051,529 @@
                     checkbox.checked = this.checked;
                 });
             });
+            
+            // Filter Data Count
+            document.getElementById('filter-btn').addEventListener('click', function() {
+                renderDataCountTable();
+            });
+            
+            // Sync Cycle Count to GitHub
+            document.getElementById('sync-cyclecount').addEventListener('click', async function() {
+                await syncManager.syncToGitHub('cycle_count', 
+                    document.getElementById('sync-cyclecount-progress'));
+            });
+            
+            // Sync from GitHub for Cycle Count
+            document.getElementById('sync-from-github-cyclecount').addEventListener('click', async function() {
+                await syncManager.syncFromGitHub('cycle_count', 
+                    document.getElementById('sync-cyclecount-progress'));
+            });
+            
+            // Sync All Data
+            document.getElementById('sync-all-data').addEventListener('click', async function() {
+                await syncManager.syncAllToGitHub();
+            });
         }
         
-        // ==============================
-        // VALIDATION CODE TO LOCATION CONVERSION
-        // ==============================
-        
-        // Fungsi untuk mengubah validation code menjadi location code
-        async function convertValidationCodeToLocation(validationCode) {
-            if (!validationCode || !storageManager) return null;
-            
-            try {
-                const masterLocationData = await storageManager.getMasterLocation();
-                const location = masterLocationData.find(item => 
-                    item.validationCode === validationCode
-                );
-                
-                return location ? location.location : null;
-            } catch (error) {
-                console.error('Error converting validation code to location:', error);
-                return null;
-            }
-        }
-        
-        // Event listener untuk input location (validation code)
-        document.getElementById('location').addEventListener('blur', async function() {
-            const validationCode = this.value.trim();
-            if (!validationCode) return;
-            
-            const locationCode = await convertValidationCodeToLocation(validationCode);
-            if (locationCode) {
-                this.value = locationCode;
-                showToast(`Validation code "${validationCode}" dikonversi ke location: "${locationCode}"`, 'info');
-                
-                // Update current location display
-                document.getElementById('current-location-name').textContent = locationCode;
-                document.getElementById('current-location-display').style.display = 'block';
-                
-                // Hitung jumlah SKU di lokasi ini
-                try {
-                    const inventoryData = await storageManager.getInventory();
-                    const skuCount = inventoryData.filter(item => item.locationId === locationCode).length;
-                    document.getElementById('current-location-sku-count').textContent = skuCount;
-                } catch (error) {
-                    console.error('Error counting SKU:', error);
-                }
-            } else {
-                showToast(`Validation code "${validationCode}" tidak ditemukan di master data`, 'error');
-            }
-        });
-        
-        // Event listener untuk save location button
-        document.getElementById('save-location-btn').addEventListener('click', async function() {
-            const validationCode = document.getElementById('location').value.trim();
-            if (!validationCode) {
-                showToast('Masukkan validation code terlebih dahulu', 'error');
-                return;
-            }
-            
-            const locationCode = await convertValidationCodeToLocation(validationCode);
-            if (locationCode) {
-                document.getElementById('location').value = locationCode;
-                showToast(`Location berhasil disimpan: ${locationCode}`, 'success');
-                
-                // Update current location display
-                document.getElementById('current-location-name').textContent = locationCode;
-                document.getElementById('current-location-display').style.display = 'block';
-                
-                // Hitung jumlah SKU di lokasi ini
-                try {
-                    const inventoryData = await storageManager.getInventory();
-                    const skuCount = inventoryData.filter(item => item.locationId === locationCode).length;
-                    document.getElementById('current-location-sku-count').textContent = skuCount;
-                } catch (error) {
-                    console.error('Error counting SKU:', error);
-                }
-            } else {
-                showToast(`Validation code "${validationCode}" tidak ditemukan`, 'error');
-            }
-        });
-        
-        // ==============================
-        // FORM CYCLE COUNT LOGIC
-        // ==============================
-        
-        // Event listener untuk form cycle count
-        document.getElementById('cycleCountForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(this);
-            const location = formData.get('location');
-            const ean = formData.get('ean');
-            const sku = formData.get('sku');
-            const description = formData.get('description');
-            const traceId = formData.get('traceId');
-            const countType = formData.get('countType');
-            const qty = parseInt(formData.get('qty') || '0');
-            const remark = formData.get('remark');
-            
-            // Validasi data
-            if (!location || !ean || !sku || qty < 0) {
-                showToast('Lengkapi semua data yang diperlukan', 'error');
-                return;
-            }
-            
-            // Cek apakah data sudah ada di inventory
-            try {
-                const inventoryData = await storageManager.searchInventory(location, sku);
-                if (inventoryData.length === 0 && !remark) {
-                    showToast('Data tidak ditemukan di inventory. Harap isi keterangan pada field Remark.', 'error');
-                    return;
-                }
-            } catch (error) {
-                console.error('Error checking inventory:', error);
-                // Lanjutkan saja jika ada error saat pengecekan
-            }
-            
-            // Cek apakah count type sudah ada untuk lokasi dan EAN ini
-            try {
-                const existingCounts = await storageManager.getCycleCount();
-                const existingCount = existingCounts.find(item => 
-                    item.location === location && 
-                    item.ean === ean && 
-                    item.countType === countType
-                );
-                
-                if (existingCount) {
-                    showToast(`Count untuk tipe "${countType}" sudah ada. Data hanya dapat dilihat.`, 'info');
-                    document.getElementById('count-saved').style.display = 'block';
-                    document.getElementById('qty').disabled = true;
-                    document.getElementById('remark').disabled = true;
-                    return;
-                }
-            } catch (error) {
-                console.error('Error checking existing counts:', error);
-            }
-            
-            // Simpan data
-            const cycleCountData = {
-                location,
-                ean,
-                sku,
-                description,
-                traceId,
-                countType,
-                qty,
-                remark,
-                timestamp: new Date().toISOString()
-            };
-            
-            try {
-                await storageManager.saveCycleCount(cycleCountData);
-                showToast('Data cycle count berhasil disimpan!');
-                
-                // Reset form
-                this.reset();
-                document.getElementById('count-saved').style.display = 'none';
-                document.getElementById('notification').style.display = 'none';
-                document.getElementById('qty').disabled = false;
-                document.getElementById('remark').disabled = false;
-                
-                // Auto sync to GitHub jika enabled
-                const githubConfig = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
-                if (githubConfig.autoSyncEnabled) {
-                    setTimeout(() => {
-                        syncManager.syncToGitHub('cycle_count', 
-                            document.getElementById('sync-cyclecount-progress'));
-                    }, 1000);
-                }
-            } catch (error) {
-                console.error('Error saving cycle count data:', error);
-                showToast('Error menyimpan data: ' + error.message, 'error');
-            }
-        });
-        
-        // Event listener untuk input EAN
-        document.getElementById('ean').addEventListener('input', async function() {
-            const ean = this.value.trim();
-            if (!ean) return;
-            
-            // Tampilkan loading
-            const loadingElement = document.getElementById('ean-loading');
-            loadingElement.style.display = 'block';
-            
-            try {
-                // Cari data master EAN
-                const masterEanData = await storageManager.getMasterEan();
-                const eanData = masterEanData.find(item => item.ean === ean);
-                
-                if (eanData) {
-                    document.getElementById('sku').value = eanData.sku || '';
-                    
-                    // Cari data inventory berdasarkan SKU dan lokasi
-                    const location = document.getElementById('location').value.trim();
-                    if (location) {
-                        const inventoryData = await storageManager.getInventory();
-                        const inventoryItem = inventoryData.find(item => 
-                            item.locationId === location && item.sku === eanData.sku
-                        );
-                        
-                        if (inventoryItem) {
-                            document.getElementById('description').value = inventoryItem.skuDescrL || '';
-                            document.getElementById('traceId').value = inventoryItem.traceId || '';
-                            document.getElementById('notification').style.display = 'none';
-                        } else {
-                            document.getElementById('description').value = '';
-                            document.getElementById('traceId').value = '';
-                            document.getElementById('notification').style.display = 'block';
-                        }
-                    }
-                } else {
-                    document.getElementById('sku').value = '';
-                    document.getElementById('description').value = '';
-                    document.getElementById('traceId').value = '';
-                    document.getElementById('notification').style.display = 'block';
-                }
-            } catch (error) {
-                console.error('Error searching EAN data:', error);
-            } finally {
-                loadingElement.style.display = 'none';
-            }
-        });
-        
-        // ==============================
-        // INITIALIZATION AND EVENT HANDLERS
-        // ==============================
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            // Login form handler
-            document.getElementById('login-form').addEventListener('submit', function(e) {
-                e.preventDefault();
-                
-                const username = document.getElementById('username').value;
-                const password = document.getElementById('password').value;
-                
-                if (username && password) {
-                    currentUser = username;
-                    userKey = username.replace(/\s+/g, '_').toLowerCase();
-                    
-                    // Initialize storage manager and other components
-                    storageManager = new HybridStorageManager(userKey);
-                    githubSyncManager = new GitHubSyncManager(storageManager, userKey);
-                    syncManager = new SyncManager(storageManager, githubSyncManager);
-                    paginationManager = new PaginationManager(15);
-                    
-                    // Show app and hide login
-                    document.getElementById('login-container').style.display = 'none';
-                    document.getElementById('app-container').style.display = 'flex';
-                    
-                    // Update user welcome
-                    document.getElementById('user-welcome').textContent = `Halo, ${username}`;
-                    
-                    // Load GitHub config
-                    loadGithubConfig();
-                    
-                    // Render initial data
-                    renderDataCountTable();
-                    renderMasterLocationData();
-                    renderMasterEanData();
-                    renderInventoryData();
-                    renderStorageStatus();
-                    
-                    // Setup functions
-                    setupMasterLocationFunctions();
-                    setupMasterEanFunctions();
-                    setupInventoryFunctions();
-                    setupDataCountFunctions();
-                    
-                    // Load last sync timestamps
-                    githubSyncManager.loadLastSyncTimestamps();
-                    
-                    showToast(`Selamat datang, ${username}!`);
-                } else {
-                    alert('Username dan password harus diisi!');
-                }
-            });
-            
-            // Logout button
-            document.getElementById('logout-btn').addEventListener('click', function() {
-                if (confirm('Apakah Anda yakin ingin logout?')) {
-                    // Clear auto-sync interval
-                    if (autoSyncInterval) {
-                        clearInterval(autoSyncInterval);
-                        autoSyncInterval = null;
-                    }
-                    
-                    // Reset to login screen
-                    document.getElementById('login-container').style.display = 'flex';
-                    document.getElementById('app-container').style.display = 'none';
-                    document.getElementById('login-form').reset();
-                    currentUser = null;
-                    userKey = null;
-                    storageManager = null;
-                    githubSyncManager = null;
-                    syncManager = null;
-                    paginationManager = null;
-                    
-                    // Reset GitHub connection status
-                    resetGithubConnection();
-                }
-            });
-            
-            // Sidebar toggle for mobile
-            document.getElementById('sidebar-toggle').addEventListener('click', function() {
-                document.getElementById('sidebar').classList.toggle('expanded');
-                document.getElementById('mobile-nav-backdrop').classList.toggle('expanded');
-            });
-            
-            document.getElementById('mobile-nav-backdrop').addEventListener('click', function() {
-                document.getElementById('sidebar').classList.remove('expanded');
-                this.classList.remove('expanded');
-            });
-            
-            // Sidebar menu handlers
-            document.querySelectorAll('.sidebar-menu a[data-tab]').forEach(link => {
-                link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    
-                    const targetTab = this.getAttribute('data-tab');
-                    
-                    // Handle submenu expansion
-                    if (this.parentElement.classList.contains('has-submenu')) {
-                        this.parentElement.classList.toggle('expanded');
-                        const submenu = this.nextElementSibling;
-                        if (submenu) {
-                            submenu.classList.toggle('expanded');
-                        }
-                        return;
-                    }
-                    
-                    // Close sidebar on mobile after clicking a menu item
-                    if (window.innerWidth <= 992) {
-                        document.getElementById('sidebar').classList.remove('expanded');
-                        document.getElementById('mobile-nav-backdrop').classList.remove('expanded');
-                    }
-                    
-                    // Show selected tab and hide others
-                    document.querySelectorAll('.tab-content').forEach(tab => {
-                        tab.style.display = 'none';
-                    });
-                    
-                    const targetTabElement = document.getElementById(`${targetTab}-tab`);
-                    if (targetTabElement) {
-                        targetTabElement.style.display = 'block';
-                    }
-                    
-                    // Update active menu item
-                    document.querySelectorAll('.sidebar-menu a').forEach(item => {
-                        item.classList.remove('active');
-                    });
-                    this.classList.add('active');
-                    
-                    // Render data for the selected tab if needed
-                    switch(targetTab) {
-                        case 'data-count':
-                            renderDataCountTable();
-                            break;
-                        case 'master-location':
-                            renderMasterLocationData();
-                            break;
-                        case 'master-ean':
-                            renderMasterEanData();
-                            break;
-                        case 'inventory-balance':
-                            renderInventoryData();
-                            break;
-                        case 'storage-status':
-                            renderStorageStatus();
-                            break;
-                    }
-                });
-            });
-            
-            // Storage settings
+        // Storage Status Functions
+        function setupStorageStatusFunctions() {
+            // Refresh Storage Stats
             document.getElementById('refresh-storage-stats').addEventListener('click', function() {
                 renderStorageStatus();
             });
             
-            document.getElementById('clear-all-data').addEventListener('click', function() {
+            // Clear All Data
+            document.getElementById('clear-all-data').addEventListener('click', async function() {
                 if (confirm('Apakah Anda yakin ingin menghapus SEMUA data? Tindakan ini tidak dapat dibatalkan!')) {
-                    if (storageManager) {
-                        storageManager.clearAllData()
-                            .then(() => {
-                                showToast('Semua data berhasil dihapus!');
-                                renderDataCountTable();
-                                renderMasterLocationData();
-                                renderMasterEanData();
-                                renderInventoryData();
-                                renderStorageStatus();
-                            })
-                            .catch(error => {
-                                console.error('Error clearing all data:', error);
-                                showToast('Error menghapus data: ' + error.message, 'error');
-                            });
+                    try {
+                        await storageManager.clearAllData();
+                        showToast('Semua data berhasil dihapus!');
+                        await renderDataCountTable();
+                        await renderMasterLocationData();
+                        await renderMasterEanData();
+                        await renderInventoryData();
+                        await renderStorageStatus();
+                    } catch (error) {
+                        console.error('Error clearing all data:', error);
+                        showToast('Error menghapus data: ' + error.message, 'error');
                     }
                 }
             });
             
+            // Save Storage Settings
             document.getElementById('save-storage-settings').addEventListener('click', function() {
+                const enableIndexedDB = document.getElementById('enable-indexeddb');
+                const enableLocalStorage = document.getElementById('enable-localstorage');
+                const enableGitHubSync = document.getElementById('enable-github-sync');
+                
                 if (storageManager) {
-                    const enableIndexedDB = document.getElementById('enable-indexeddb').checked;
-                    const enableLocalStorage = document.getElementById('enable-localstorage').checked;
-                    const enableGitHubSync = document.getElementById('enable-github-sync').checked;
-                    
-                    storageManager.settings.enableIndexedDB = enableIndexedDB;
-                    storageManager.settings.enableLocalStorage = enableLocalStorage;
-                    storageManager.settings.enableGitHubSync = enableGitHubSync;
-                    
+                    storageManager.settings.enableIndexedDB = enableIndexedDB.checked;
+                    storageManager.settings.enableLocalStorage = enableLocalStorage.checked;
+                    storageManager.settings.enableGitHubSync = enableGitHubSync.checked;
                     storageManager.saveSettings();
+                    
                     showToast('Pengaturan penyimpanan berhasil disimpan!');
                 }
             });
+        }
+        
+        // ==============================
+        // FORM CYCLE COUNT FUNCTIONS
+        // ==============================
+        
+        function setupFormCycleCount() {
+            const cycleCountForm = document.getElementById('cycleCountForm');
+            const locationInput = document.getElementById('location');
+            const eanInput = document.getElementById('ean');
+            const skuInput = document.getElementById('sku');
+            const descriptionInput = document.getElementById('description');
+            const traceIdInput = document.getElementById('traceId');
+            const countTypeSelect = document.getElementById('countType');
+            const qtyInput = document.getElementById('qty');
+            const remarkInput = document.getElementById('remark');
+            const saveLocationBtn = document.getElementById('save-location-btn');
+            const currentLocationDisplay = document.getElementById('current-location-display');
+            const currentLocationName = document.getElementById('current-location-name');
+            const currentLocationSkuCount = document.getElementById('current-location-sku-count');
+            const notification = document.getElementById('notification');
+            const countSaved = document.getElementById('count-saved');
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            const navInfo = document.getElementById('nav-info');
+            const navigationContainer = document.getElementById('navigation-container');
             
-            // Auto-sync toggle
-            document.getElementById('auto-sync-toggle').addEventListener('change', function() {
-                const isChecked = this.checked;
-                const githubConfig = JSON.parse(localStorage.getItem(`githubConfig_${userKey}`)) || {};
-                githubConfig.autoSyncEnabled = isChecked;
-                localStorage.setItem(`githubConfig_${userKey}`, JSON.stringify(githubConfig));
+            let currentLocation = null;
+            let currentLocationInventory = [];
+            let currentItemIndex = 0;
+            
+            // Save location button
+            saveLocationBtn.addEventListener('click', async function() {
+                const validationCode = locationInput.value.trim();
+                if (!validationCode) {
+                    showToast('Masukkan Validation Code terlebih dahulu', 'error');
+                    return;
+                }
                 
-                if (isChecked && githubConfig.token && githubConfig.owner && githubConfig.repo) {
-                    startAutoSync(githubConfig.syncInterval || 5);
-                    showToast('Auto-sync ke GitHub diaktifkan');
-                } else if (!isChecked && autoSyncInterval) {
-                    clearInterval(autoSyncInterval);
-                    autoSyncInterval = null;
-                    showToast('Auto-sync ke GitHub dinonaktifkan');
+                try {
+                    const masterLocationData = await storageManager.getMasterLocation();
+                    const location = masterLocationData.find(item => item.validationCode === validationCode);
+                    
+                    if (!location) {
+                        showToast('Validation Code tidak ditemukan di Master Data Lokasi', 'error');
+                        return;
+                    }
+                    
+                    // Update location input with actual location code
+                    locationInput.value = location.location;
+                    currentLocation = location.location;
+                    
+                    // Show current location display
+                    currentLocationName.textContent = location.location;
+                    currentLocationDisplay.style.display = 'block';
+                    
+                    // Load inventory for this location
+                    const inventoryData = await storageManager.getInventory();
+                    currentLocationInventory = inventoryData.filter(item => item.locationId === location.location);
+                    currentLocationSkuCount.textContent = currentLocationInventory.length;
+                    
+                    // Reset navigation
+                    currentItemIndex = 0;
+                    navigationContainer.style.display = currentLocationInventory.length > 0 ? 'block' : 'none';
+                    updateNavigation();
+                    
+                    showToast(`Lokasi berhasil disimpan: ${location.location}`);
+                } catch (error) {
+                    console.error('Error saving location:', error);
+                    showToast('Error menyimpan lokasi: ' + error.message, 'error');
                 }
             });
             
-            // Initialize GitHub connection status
-            resetGithubConnection();
+            // EAN input with auto-complete
+            eanInput.addEventListener('input', async function() {
+                const ean = eanInput.value.trim();
+                if (!ean) {
+                    resetEanFields();
+                    return;
+                }
+                
+                try {
+                    const masterEanData = await storageManager.getMasterEan();
+                    const eanData = masterEanData.find(item => item.ean === ean);
+                    
+                    if (eanData) {
+                        skuInput.value = eanData.sku;
+                        await searchInventoryData(eanData.sku);
+                    } else {
+                        resetEanFields();
+                    }
+                } catch (error) {
+                    console.error('Error searching EAN:', error);
+                }
+            });
+            
+            // Search inventory data
+            async function searchInventoryData(sku) {
+                if (!currentLocation) return;
+                
+                try {
+                    const inventoryData = await storageManager.searchInventory(currentLocation, sku);
+                    
+                    if (inventoryData.length > 0) {
+                        const item = inventoryData[0];
+                        descriptionInput.value = item.skuDescrL || '';
+                        traceIdInput.value = item.traceId || '';
+                        
+                        // Hide notification
+                        notification.style.display = 'none';
+                        countSaved.style.display = 'none';
+                    } else {
+                        descriptionInput.value = '';
+                        traceIdInput.value = '';
+                        
+                        // Show notification
+                        notification.style.display = 'block';
+                        countSaved.style.display = 'none';
+                    }
+                } catch (error) {
+                    console.error('Error searching inventory:', error);
+                }
+            }
+            
+            // Reset EAN fields
+            function resetEanFields() {
+                skuInput.value = '';
+                descriptionInput.value = '';
+                traceIdInput.value = '';
+                notification.style.display = 'none';
+                countSaved.style.display = 'none';
+            }
+            
+            // Navigation functions
+            function updateNavigation() {
+                if (currentLocationInventory.length === 0) {
+                    prevBtn.disabled = true;
+                    nextBtn.disabled = true;
+                    navInfo.textContent = 'Item 0 of 0';
+                    return;
+                }
+                
+                prevBtn.disabled = currentItemIndex === 0;
+                nextBtn.disabled = currentItemIndex === currentLocationInventory.length - 1;
+                navInfo.textContent = `Item ${currentItemIndex + 1} of ${currentLocationInventory.length}`;
+                
+                // Load current item data
+                const currentItem = currentLocationInventory[currentItemIndex];
+                if (currentItem) {
+                    eanInput.value = '';
+                    skuInput.value = currentItem.sku;
+                    descriptionInput.value = currentItem.skuDescrL || '';
+                    traceIdInput.value = currentItem.traceId || '';
+                    
+                    // Check if count already exists for this item
+                    checkExistingCount(currentItem.sku);
+                }
+            }
+            
+            async function checkExistingCount(sku) {
+                try {
+                    const cycleCountData = await storageManager.getCycleCount();
+                    const existingCount = cycleCountData.find(item => 
+                        item.location === currentLocation && 
+                        item.sku === sku && 
+                        item.countType === countTypeSelect.value
+                    );
+                    
+                    if (existingCount) {
+                        qtyInput.value = existingCount.qty;
+                        remarkInput.value = existingCount.remark || '';
+                        qtyInput.disabled = true;
+                        remarkInput.disabled = true;
+                        countSaved.style.display = 'block';
+                    } else {
+                        qtyInput.value = '';
+                        remarkInput.value = '';
+                        qtyInput.disabled = false;
+                        remarkInput.disabled = false;
+                        countSaved.style.display = 'none';
+                    }
+                } catch (error) {
+                    console.error('Error checking existing count:', error);
+                }
+            }
+            
+            prevBtn.addEventListener('click', function() {
+                if (currentItemIndex > 0) {
+                    currentItemIndex--;
+                    updateNavigation();
+                }
+            });
+            
+            nextBtn.addEventListener('click', function() {
+                if (currentItemIndex < currentLocationInventory.length - 1) {
+                    currentItemIndex++;
+                    updateNavigation();
+                }
+            });
+            
+            // Count type change
+            countTypeSelect.addEventListener('change', function() {
+                if (skuInput.value) {
+                    checkExistingCount(skuInput.value);
+                }
+            });
+            
+            // Form submission
+            cycleCountForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                if (!currentLocation) {
+                    showToast('Simpan lokasi terlebih dahulu', 'error');
+                    return;
+                }
+                
+                const ean = eanInput.value.trim();
+                const sku = skuInput.value.trim();
+                const countType = countTypeSelect.value;
+                const qty = parseInt(qtyInput.value) || 0;
+                const remark = remarkInput.value.trim();
+                
+                if (!sku) {
+                    showToast('EAN/SKU harus diisi', 'error');
+                    return;
+                }
+                
+                if (qty < 0) {
+                    showToast('Qty tidak boleh negatif', 'error');
+                    return;
+                }
+                
+                // Check if count already exists for this item and count type
+                try {
+                    const cycleCountData = await storageManager.getCycleCount();
+                    const existingCount = cycleCountData.find(item => 
+                        item.location === currentLocation && 
+                        item.sku === sku && 
+                        item.countType === countType
+                    );
+                    
+                    if (existingCount) {
+                        showToast('Count untuk tipe ini sudah ada dan hanya dapat dilihat', 'info');
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Error checking existing count:', error);
+                }
+                
+                // Prepare data
+                const cycleCountData = {
+                    timestamp: new Date().toISOString(),
+                    location: currentLocation,
+                    ean: ean,
+                    sku: sku,
+                    description: descriptionInput.value,
+                    traceId: traceIdInput.value,
+                    countType: countType,
+                    qty: qty,
+                    remark: remark
+                };
+                
+                try {
+                    // Save to storage
+                    await storageManager.saveCycleCount(cycleCountData);
+                    
+                    showToast('Data count berhasil disimpan!');
+                    
+                    // Auto sync to GitHub jika enabled
+                    const autoSyncToggle = document.getElementById('auto-sync-toggle');
+                    if (autoSyncToggle && autoSyncToggle.checked) {
+                        setTimeout(() => {
+                            syncManager.syncToGitHub('cycle_count', 
+                                document.getElementById('sync-cyclecount-progress'));
+                        }, 500);
+                    }
+                    
+                    // Reset form for next input
+                    eanInput.value = '';
+                    resetEanFields();
+                    qtyInput.value = '';
+                    remarkInput.value = '';
+                    eanInput.focus();
+                    
+                    // Move to next item if in navigation mode
+                    if (currentLocationInventory.length > 0 && currentItemIndex < currentLocationInventory.length - 1) {
+                        currentItemIndex++;
+                        updateNavigation();
+                    }
+                } catch (error) {
+                    console.error('Error saving cycle count:', error);
+                    showToast('Error menyimpan data: ' + error.message, 'error');
+                }
+            });
+        }
+        
+        // ==============================
+        // INITIALIZATION
+        // ==============================
+        
+        function initializeApp() {
+            // Setup sidebar toggle for mobile
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const sidebar = document.getElementById('sidebar');
+            const mobileNavBackdrop = document.getElementById('mobile-nav-backdrop');
+            
+            if (sidebarToggle && sidebar && mobileNavBackdrop) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('expanded');
+                    mobileNavBackdrop.classList.toggle('expanded');
+                });
+                
+                mobileNavBackdrop.addEventListener('click', function() {
+                    sidebar.classList.remove('expanded');
+                    mobileNavBackdrop.classList.remove('expanded');
+                });
+            }
+            
+            // Setup tab navigation
+            const menuLinks = document.querySelectorAll('.sidebar-menu a[data-tab]');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            menuLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    // Remove active class from all links and contents
+                    menuLinks.forEach(l => l.classList.remove('active'));
+                    tabContents.forEach(c => {
+                        c.classList.remove('active');
+                        c.style.display = 'none';
+                    });
+                    
+                    // Add active class to clicked link
+                    this.classList.add('active');
+                    
+                    // Show corresponding tab content
+                    const tabId = this.getAttribute('data-tab');
+                    const tabContent = document.getElementById(`${tabId}-tab`);
+                    if (tabContent) {
+                        tabContent.classList.add('active');
+                        tabContent.style.display = 'block';
+                    }
+                    
+                    // Close sidebar on mobile after clicking a link
+                    if (window.innerWidth < 992) {
+                        sidebar.classList.remove('expanded');
+                        mobileNavBackdrop.classList.remove('expanded');
+                    }
+                });
+            });
+            
+            // Setup submenu toggle
+            const submenuToggle = document.getElementById('master-data-menu');
+            if (submenuToggle) {
+                submenuToggle.addEventListener('click', function(e) {
+                    if (e.target.tagName === 'A') {
+                        e.preventDefault();
+                        this.classList.toggle('expanded');
+                        const submenu = this.querySelector('.sidebar-submenu');
+                        if (submenu) {
+                            submenu.classList.toggle('expanded');
+                        }
+                    }
+                });
+            }
+            
+            // Setup logout button
+            const logoutBtn = document.getElementById('logout-btn');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', function() {
+                    if (confirm('Apakah Anda yakin ingin logout?')) {
+                        localStorage.removeItem('currentUser');
+                        document.getElementById('login-container').style.display = 'flex';
+                        document.getElementById('app-container').style.display = 'none';
+                    }
+                });
+            }
+            
+            // Initialize managers
+            userKey = currentUser ? currentUser.replace(/\s+/g, '_').toLowerCase() : 'default';
+            storageManager = new HybridStorageManager(userKey);
+            githubSyncManager = new GitHubSyncManager(storageManager, userKey);
+            syncManager = new SyncManager(storageManager, githubSyncManager);
+            paginationManager = new PaginationManager(15);
+            
+            // Wait for storage manager to initialize
+            storageManager.initPromise.then(() => {
+                // Setup GitHub configuration
+                loadGithubConfig();
+                
+                // Setup all data management functions
+                setupMasterLocationFunctions();
+                setupMasterEanFunctions();
+                setupInventoryFunctions();
+                setupDataCountFunctions();
+                setupStorageStatusFunctions();
+                setupFormCycleCount();
+                
+                // Load last sync timestamps
+                githubSyncManager.loadLastSyncTimestamps();
+                
+                // Render initial data
+                renderDataCountTable();
+                renderMasterLocationData();
+                renderMasterEanData();
+                renderInventoryData();
+                renderStorageStatus();
+                
+                // Test GitHub connection
+                testGithubConnection();
+            }).catch(error => {
+                console.error('Error initializing storage manager:', error);
+                showToast('Error menginisialisasi penyimpanan: ' + error.message, 'error');
+            });
+        }
+        
+        // ==============================
+        // LOGIN HANDLING
+        // ==============================
+        
+        document.getElementById('login-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const remember = document.getElementById('remember').checked;
+            
+            // Simple authentication (in production, this should be server-side)
+            if (username && password) {
+                currentUser = username;
+                
+                // Save user info if remember is checked
+                if (remember) {
+                    localStorage.setItem('currentUser', username);
+                }
+                
+                // Update UI
+                document.getElementById('user-welcome').textContent = `Halo, ${username}`;
+                document.getElementById('login-container').style.display = 'none';
+                document.getElementById('app-container').style.display = 'flex';
+                
+                // Initialize app
+                initializeApp();
+            } else {
+                alert('Username dan password harus diisi');
+            }
+        });
+        
+        // Check if user is already logged in
+        window.addEventListener('DOMContentLoaded', function() {
+            const savedUser = localStorage.getItem('currentUser');
+            if (savedUser) {
+                currentUser = savedUser;
+                document.getElementById('user-welcome').textContent = `Halo, ${savedUser}`;
+                document.getElementById('login-container').style.display = 'none';
+                document.getElementById('app-container').style.display = 'flex';
+                initializeApp();
+            }
         });
     </script>
 </body>
